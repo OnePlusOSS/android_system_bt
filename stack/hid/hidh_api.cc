@@ -76,11 +76,13 @@ void hidh_get_str_attr(tSDP_DISC_REC* p_rec, uint16_t attr_id, uint16_t max_len,
 
   p_attr = SDP_FindAttributeInRec(p_rec, attr_id);
   if (p_attr != NULL) {
+    uint8_t arr_len = sizeof(p_attr->attr_value.v.array) /
+                      sizeof(p_attr->attr_value.v.array[0]);
     name_len = SDP_DISC_ATTR_LEN(p_attr->attr_len_type);
-    if (name_len < max_len) {
+    if (name_len < max_len && name_len < (arr_len - 1)) {
       memcpy(str, (char*)p_attr->attr_value.v.array, name_len);
       str[name_len] = '\0';
-    } else {
+    } else if (max_len < arr_len) {
       memcpy(str, (char*)p_attr->attr_value.v.array, max_len - 1);
       str[max_len - 1] = '\0';
     }

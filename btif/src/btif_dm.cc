@@ -110,6 +110,8 @@
 #define ENCRYPTED_BREDR 2
 #define ENCRYPTED_LE 4
 
+#define INVALID_MANUFACTURER 0
+
 typedef struct {
   bt_bond_state_t state;
   bt_bdaddr_t static_bdaddr;
@@ -188,8 +190,6 @@ typedef struct {
 #define UUID_HUMAN_INTERFACE_DEVICE "00001124-0000-1000-8000-00805f9b34fb"
 
 #define MAX_BTIF_BOND_EVENT_ENTRIES 15
-
-static skip_sdp_entry_t sdp_blacklist[] = {{76}};  // Apple Mouse and Keyboard
 
 /* This flag will be true if HCI_Inquiry is in progress */
 static bool btif_dm_inquiry_in_progress = false;
@@ -451,27 +451,53 @@ bool check_hid_le(const bt_bdaddr_t* remote_bdaddr) {
 
 /*****************************************************************************
  *
- * Function        check_sdp_bl
+ * Function        interop_skip_sdp
  *
  * Description     Checks if a given device is blacklisted to skip sdp
  *
- * Parameters     skip_sdp_entry
+ * Parameters     remote_bdaddr
  *
  * Returns         true if the device is present in blacklist, else false
  *
  ******************************************************************************/
-bool check_sdp_bl(const bt_bdaddr_t* remote_bdaddr) {
+bool interop_skip_sdp(const bt_bdaddr_t* remote_bdaddr) {
+  if (remote_bdaddr == NULL) {
+    LOG_WARN(LOG_TAG, "%s: remote_bdaddr = NULL, returning false", __func__);
+    return false;
+  }
+
+  if (interop_match_addr(INTEROP_DISABLE_SDP_AFTER_PAIRING, remote_bdaddr)) {
+    LOG_WARN(LOG_TAG, "%s: device is in blacklist for skipping sdp", __func__);
+    return true;
+  }
+
+  bt_property_t prop_name;
+  bt_bdname_t bdname;
+  BTIF_STORAGE_FILL_PROPERTY(&prop_name, BT_PROPERTY_BDNAME,
+                             sizeof(bt_bdname_t), &bdname);
+  if (btif_storage_get_remote_device_property(
+          (bt_bdaddr_t*)remote_bdaddr, &prop_name) != BT_STATUS_SUCCESS) {
+    LOG_WARN(LOG_TAG, "%s: BT_PROPERTY_BDNAME failed, returning false",
+             __func__);
+    return false;
+  }
+
+  if (strlen((const char*)bdname.name) != 0 &&
+      interop_match_name(INTEROP_DISABLE_SDP_AFTER_PAIRING,
+                         (const char*)bdname.name))
+    return true;
+
+  if (remote_bdaddr == NULL) return false;
+
   uint16_t manufacturer = 0;
   uint8_t lmp_ver = 0;
   uint16_t lmp_subver = 0;
-  bt_property_t prop_name;
-  bt_remote_version_t info;
-
-  if (remote_bdaddr == NULL) return false;
 
   /* fetch additional info about remote device used in iop query */
   BTM_ReadRemoteVersion(*(BD_ADDR*)remote_bdaddr, &lmp_ver, &manufacturer,
                         &lmp_subver);
+
+  bt_remote_version_t info;
 
   /* if not available yet, try fetching from config database */
   BTIF_STORAGE_FILL_PROPERTY(&prop_name, BT_PROPERTY_REMOTE_VERSION_INFO,
@@ -479,14 +505,16 @@ bool check_sdp_bl(const bt_bdaddr_t* remote_bdaddr) {
 
   if (btif_storage_get_remote_device_property(
           (bt_bdaddr_t*)remote_bdaddr, &prop_name) != BT_STATUS_SUCCESS) {
+    APPL_TRACE_WARNING(
+        "%s: BT_PROPERTY_REMOTE_VERSION_INFO failed, returning false",
+        __func__);
     return false;
   }
   manufacturer = info.manufacturer;
 
-  for (unsigned int i = 0; i < ARRAY_SIZE(sdp_blacklist); i++) {
-    if (manufacturer == sdp_blacklist[i].manufact_id) return true;
-  }
-  return false;
+  return (manufacturer != INVALID_MANUFACTURER &&
+          interop_match_manufacturer(INTEROP_DISABLE_SDP_AFTER_PAIRING,
+                                     manufacturer));
 }
 
 static void bond_state_changed(bt_status_t status, bt_bdaddr_t* bd_addr,
@@ -1037,7 +1065,6 @@ static void btif_dm_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
   bt_bdaddr_t bd_addr;
   bt_status_t status = BT_STATUS_FAIL;
   bt_bond_state_t state = BT_BOND_STATE_NONE;
-  bool skip_sdp = false;
 
   BTIF_TRACE_DEBUG("%s: bond state=%d", __func__, pairing_cb.state);
 
@@ -1095,18 +1122,12 @@ static void btif_dm_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
     btif_update_remote_properties(p_auth_cmpl->bd_addr, p_auth_cmpl->bd_name,
                                   NULL, p_auth_cmpl->dev_type);
     pairing_cb.timeout_retries = 0;
-    status = BT_STATUS_SUCCESS;
-    state = BT_BOND_STATE_BONDED;
-    bdcpy(bd_addr.address, p_auth_cmpl->bd_addr);
-
-    if (check_sdp_bl(&bd_addr) && check_cod_hid(&bd_addr)) {
-      LOG_WARN(LOG_TAG, "%s:skip SDP", __func__);
-      skip_sdp = true;
-    }
-    if (!pairing_cb.is_local_initiated && skip_sdp) {
-      bond_state_changed(status, &bd_addr, state);
-
-      LOG_WARN(LOG_TAG, "%s: Incoming HID Connection", __func__);
+    if (interop_skip_sdp(&bd_addr) && check_cod_hid(&bd_addr)) {
+      bond_state_changed(BT_STATUS_SUCCESS, &bd_addr, BT_BOND_STATE_BONDED);
+      LOG_WARN(LOG_TAG,
+               "%s: HID Connection from "
+               "blacklisted device, skipping sdp",
+               __func__);
       bt_property_t prop;
       bt_bdaddr_t bd_addr;
       bt_uuid_t uuid;
@@ -1118,10 +1139,18 @@ static void btif_dm_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
       prop.val = uuid.uu;
       prop.len = MAX_UUID_SIZE;
 
+      /* Also write this to the NVRAM */
+      status = btif_storage_set_remote_device_property(&bd_addr, &prop);
       /* Send the event to the BTIF */
       HAL_CBACK(bt_hal_cbacks, remote_device_properties_cb, BT_STATUS_SUCCESS,
                 &bd_addr, 1, &prop);
     } else {
+      status = BT_STATUS_SUCCESS;
+      state = BT_BOND_STATE_BONDED;
+
+      /* Trigger SDP on the device */
+      pairing_cb.sdp_attempts = 1;
+
       bool is_crosskey = false;
       /* If bonded due to cross-key, save the static address too*/
       if (pairing_cb.state == BT_BOND_STATE_BONDING &&
@@ -1148,6 +1177,7 @@ static void btif_dm_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
     // Map the HCI fail reason  to  bt status
     switch (p_auth_cmpl->fail_reason) {
       case HCI_ERR_PAGE_TIMEOUT:
+      case HCI_ERR_LMP_RESPONSE_TIMEOUT:
         if (interop_match_addr(INTEROP_AUTO_RETRY_PAIRING, &bd_addr) &&
             pairing_cb.timeout_retries) {
           BTIF_TRACE_WARNING("%s() - Pairing timeout; retrying (%d) ...",
@@ -1164,10 +1194,6 @@ static void btif_dm_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
       case HCI_ERR_PAIRING_NOT_ALLOWED:
         btif_storage_remove_bonded_device(&bd_addr);
         status = BT_STATUS_AUTH_REJECTED;
-        break;
-
-      case HCI_ERR_LMP_RESPONSE_TIMEOUT:
-        status = BT_STATUS_AUTH_FAILURE;
         break;
 
       /* map the auth failure codes, so we can retry pairing if necessary */
@@ -1682,7 +1708,7 @@ static void btif_dm_upstreams_evt(uint16_t event, char* p_param) {
       btm_set_bond_type_dev(p_data->link_down.bd_addr, BOND_TYPE_UNKNOWN);
 
 /*special handling for HID devices */
-#if (defined(BTA_HH_INCLUDED) && (BTA_HH_INCLUDED == true))
+#if (defined(BTA_HH_INCLUDED) && (BTA_HH_INCLUDED == TRUE))
       btif_hh_remove_device(bd_addr);
 #endif
 #if (defined(BTA_HD_INCLUDED) && (BTA_HD_INCLUDED == TRUE))

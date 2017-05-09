@@ -44,6 +44,46 @@ static const uint8_t bta_hh_mod_key_mask[BTA_HH_MOD_MAX_KEY] = {
     BTA_HH_KB_CTRL_MASK, BTA_HH_KB_SHIFT_MASK, BTA_HH_KB_ALT_MASK,
     BTA_HH_KB_GUI_MASK};
 
+/* hid_blacklist_addr_prefix_for_ssr & hid_ssr_max_lat_list_for_iot are used
+   to fix IOP issues of sniff subrate feature */
+static const uint8_t hid_blacklist_addr_prefix_for_ssr[][3] = {
+    {0x00, 0x1B, 0xDC} // ISSC
+    ,{0xdc, 0x2c, 0x26} // BORND
+    ,{0x54, 0x46, 0x6B} // JW MT002
+};
+
+static const uint16_t hid_ssr_max_lat_list_for_iot[] = {
+    0x0012 // ISSC
+    ,BTA_HH_SSR_MAX_LATENCY_ZERO // BORND
+    ,BTA_HH_SSR_DISABLE_SSR // JW MT002
+};
+
+
+/*******************************************************************************
+**      Function       blacklist_adjust_sniff_subrate
+**
+**      Description    It's used to update SSR parameter such as max latency,
+**                     if device is found in HID blacklist.
+**
+**      Returns        None
+*******************************************************************************/
+static void blacklist_adjust_sniff_subrate(BD_ADDR peer_dev, uint16_t *ssr_max_lat)
+{
+  uint16_t old_ssr_max_lat = *ssr_max_lat;
+  const int blacklist_size =
+          sizeof(hid_blacklist_addr_prefix_for_ssr)/sizeof(hid_blacklist_addr_prefix_for_ssr[0]);
+  for (int i = 0; i < blacklist_size; i++) {
+    if (hid_blacklist_addr_prefix_for_ssr[i][0] == peer_dev[0] &&
+        hid_blacklist_addr_prefix_for_ssr[i][1] == peer_dev[1] &&
+        hid_blacklist_addr_prefix_for_ssr[i][2] == peer_dev[2]) {
+        *ssr_max_lat = hid_ssr_max_lat_list_for_iot[i];
+      APPL_TRACE_WARNING("%s: Device in blacklist for ssr, max latency changed "
+          "from %d to %d", __func__, old_ssr_max_lat, *ssr_max_lat);
+      return;
+    }
+  }
+}
+
 /*******************************************************************************
  *
  * Function         bta_hh_find_cb
@@ -184,6 +224,7 @@ void bta_hh_add_device_to_list(tBTA_HH_DEV_CB* p_cb, uint8_t handle,
 
   p_cb->dscp_info.ssr_max_latency = ssr_max_latency;
   p_cb->dscp_info.ssr_min_tout = ssr_min_tout;
+  blacklist_adjust_sniff_subrate(p_cb->addr, &(p_cb->dscp_info.ssr_max_latency));
 
   /* store report descriptor info */
   if (p_dscp_info) {

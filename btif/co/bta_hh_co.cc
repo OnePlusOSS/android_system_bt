@@ -21,6 +21,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/uhid.h>
+#include <linux/version.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -34,6 +35,7 @@
 #include "btcore/include/bdaddr.h"
 #include "btif_hh.h"
 #include "btif_util.h"
+#include "device/include/interop.h"
 #include "osi/include/osi.h"
 
 const char* dev_path = "/dev/uhid";
@@ -43,6 +45,95 @@ const char* dev_path = "/dev/uhid";
 #define BTA_HH_NV_LOAD_MAX 16
 static tBTA_HH_RPT_CACHE_ENTRY sReportCache[BTA_HH_NV_LOAD_MAX];
 #endif
+
+#define REPORT_DESC_REPORT_ID 0x05
+#define REPORT_DESC_DIGITIZER_PAGE 0x0D
+#define REPORT_DESC_START_COLLECTION 0xA1
+#define REPORT_DESC_END_COLLECTION 0xC0
+
+static void remove_digitizer_descriptor(uint8_t* data, uint16_t* length) {
+  uint8_t* startDescPtr = data;
+  uint8_t* desc = data;
+
+  BTIF_TRACE_DEBUG("remove_digitizer_descriptor");
+  /* Parse until complete report descriptor is parsed */
+  while (startDescPtr < data + *length) {
+    uint8_t item = *startDescPtr++;
+    uint8_t usage_page;
+
+    switch (item) {
+      case REPORT_DESC_REPORT_ID:  // Report ID
+        usage_page = *startDescPtr;
+        if (usage_page == REPORT_DESC_DIGITIZER_PAGE) {
+          // digitizer usage page
+          uint8_t* traversePtr = startDescPtr;
+          uint8_t num_of_collections = 0;
+          uint8_t num_of_end_collections = 0;
+          uint16_t remainingBytesToBeCopied = 0;
+          /* increment pointer until digitizer descriptor is parsed
+           * completely or start collection matches end collection */
+          while ((num_of_collections == 0 ||
+                  (num_of_collections != num_of_end_collections)) &&
+                 (traversePtr < data + *length)) {
+            if (*traversePtr == REPORT_DESC_START_COLLECTION) {
+              /* Increment number of collections for
+               * digitizer descriptor */
+              num_of_collections++;
+            }
+            if (*traversePtr == REPORT_DESC_END_COLLECTION) {
+              /* Increment number of end collections for
+               * digitizer descriptor */
+              num_of_end_collections++;
+            }
+            /* increment the pointer to continue parsing
+             * the digitizer descriptor */
+            traversePtr++;
+          }
+          remainingBytesToBeCopied = *length - (traversePtr - data);
+          BTIF_TRACE_DEBUG("starting point of digitizer desc = %d\n",
+                           (startDescPtr - data) - 1);
+          BTIF_TRACE_DEBUG(
+              "start collection = %d, end collection = "
+              " %d\n",
+              num_of_collections, num_of_end_collections);
+          BTIF_TRACE_DEBUG("end point of digitizer desc = %d\n",
+                           (traversePtr - data));
+          BTIF_TRACE_DEBUG("length of digitizer desc = %d\n",
+                           traversePtr - startDescPtr + 2);
+          BTIF_TRACE_DEBUG("bytes remaining to be copied = %d\n",
+                           remainingBytesToBeCopied);
+          if (remainingBytesToBeCopied) {
+            uint32_t i;
+            uint8_t* newDescPtr = traversePtr;
+            uint32_t digDescStartPoint = (startDescPtr - data) - 1;
+            uint32_t digDescEndPoint =
+                *length - (traversePtr - startDescPtr) - 1;
+            /* copy the remaining bytes in descriptor to the
+             * existing place of digitizer descriptor */
+            for (i = digDescStartPoint; i < digDescEndPoint; i++) {
+              desc[i] = *newDescPtr++;
+            }
+          }
+          /* update the length as digitizer descriptor is removed */
+          *length = *length - (traversePtr - startDescPtr) - 1;
+          BTIF_TRACE_DEBUG("new length of report desc = %d\n", *length);
+          /* Update the start descriptor again to continue parsing
+           * for digitizer records assuming more than 1 digitizer
+           * record exists in report descriptor */
+          startDescPtr--;
+        }
+        break;
+
+      default:
+        /*
+         * Since item is not Report Id (0x05), increment start pointer
+         * by length pointed by first 2 bits of item (i.e mask of 0x03)
+         */
+        startDescPtr += (item & 0x03);
+        break;
+    }
+  }
+}
 
 void uhid_set_non_blocking(int fd) {
   int opts = fcntl(fd, F_GETFL);
@@ -125,10 +216,29 @@ static int uhid_read_event(btif_hh_device_t* p_dev) {
       if (ev.u.output.rtype == UHID_FEATURE_REPORT)
         btif_hh_setreport(p_dev, BTHH_FEATURE_REPORT, ev.u.output.size,
                           ev.u.output.data);
-      else if (ev.u.output.rtype == UHID_OUTPUT_REPORT)
+      else if (ev.u.output.rtype == UHID_OUTPUT_REPORT) {
+        if (ev.u.output.size > BTIF_HH_OUTPUT_REPORT_SIZE) {
+            APPL_TRACE_WARNING("UHID_OUTPUT: Invalid report size %d",
+                ev.u.output.size);
+            return 0;
+        }
+        if (ev.u.output.size == BTIF_HH_OUTPUT_REPORT_SIZE &&
+            !memcmp(&p_dev->last_output_rpt_data, &ev.u.output.data,
+            BTIF_HH_OUTPUT_REPORT_SIZE)) {
+            /* Last output report same as current output report, don't inform to remote
+             * device as this could be the case when reports are being sent due to
+             * device suspend/resume. If same output report is sent to remote device
+             * device which uses UART as transport might not be able to suspend at all
+             * leading to higher battery drain.
+             */
+            APPL_TRACE_VERBOSE("UHID_OUTPUT: data same returning");
+            return 0;
+        }
+        /* Copy new output report data for future tracking */
+        memcpy(&p_dev->last_output_rpt_data, &ev.u.output.data, ev.u.output.size);
         btif_hh_setreport(p_dev, BTHH_OUTPUT_REPORT, ev.u.output.size,
                           ev.u.output.data);
-      else
+      } else
         btif_hh_setreport(p_dev, BTHH_INPUT_REPORT, ev.u.output.size,
                           ev.u.output.data);
       break;
@@ -141,13 +251,62 @@ static int uhid_read_event(btif_hh_device_t* p_dev) {
       }
       APPL_TRACE_DEBUG("UHID_OUTPUT_EV from uhid-dev\n");
       break;
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 18, 00))
+    case UHID_SET_REPORT: {
+      if (ret < (ssize_t)(sizeof(ev.type) + sizeof(ev.u.set_report))) {
+        APPL_TRACE_ERROR(
+            "%s: UHID_SET_REPORT: Invalid size read from "
+            "uhid-dev: %zd < %zu",
+            __func__, ret, sizeof(ev.type) + sizeof(ev.u.set_report));
+        return -EFAULT;
+      }
+      APPL_TRACE_DEBUG(
+          "UHID_SET_REPORT: Report type = %d, report_size = %d"
+          " report id = %d",
+          ev.u.set_report.rtype, ev.u.set_report.size, ev.u.set_report.id);
+      if (p_dev->set_rpt_id_queue) {
+        void* set_rpt_id = (void*)&ev.u.set_report.id;
+        fixed_queue_enqueue(p_dev->set_rpt_id_queue, set_rpt_id);
+      }
+      if (ev.u.set_report.rtype == UHID_FEATURE_REPORT)
+        btif_hh_setreport(p_dev, BTHH_FEATURE_REPORT, ev.u.set_report.size,
+                          ev.u.set_report.data);
+      else if (ev.u.set_report.rtype == UHID_OUTPUT_REPORT)
+        btif_hh_setreport(p_dev, BTHH_OUTPUT_REPORT, ev.u.set_report.size,
+                          ev.u.set_report.data);
+      else
+        btif_hh_setreport(p_dev, BTHH_INPUT_REPORT, ev.u.set_report.size,
+                          ev.u.set_report.data);
+    } break;
+    case UHID_GET_REPORT:
+      if (ret < (ssize_t)(sizeof(ev.type) + sizeof(ev.u.get_report))) {
+        APPL_TRACE_ERROR(
+            "%s: UHID_GET_REPORT: Invalid size read from "
+            "uhid-dev: %zd < %zu",
+            __func__, ret, sizeof(ev.type) + sizeof(ev.u.get_report));
+        return -EFAULT;
+      }
+      APPL_TRACE_DEBUG("UHID_GET_REPORT: Report type = %d",
+                       ev.u.get_report.rtype);
+      if (p_dev->get_rpt_id_queue) {
+        void* get_rpt_id = (void*)&ev.u.get_report.id;
+        fixed_queue_enqueue(p_dev->get_rpt_id_queue, get_rpt_id);
+      }
+      if (ev.u.get_report.rtype == UHID_FEATURE_REPORT)
+        btif_hh_getreport(p_dev, BTHH_FEATURE_REPORT, ev.u.get_report.rnum, 0);
+      else if (ev.u.get_report.rtype == UHID_OUTPUT_REPORT)
+        btif_hh_getreport(p_dev, BTHH_OUTPUT_REPORT, ev.u.get_report.rnum, 0);
+      else
+        btif_hh_getreport(p_dev, BTHH_INPUT_REPORT, ev.u.get_report.rnum, 0);
+      break;
+#else   //  (LINUX_VERSION_CODE > KERNEL_VERSION(3,18,00))
     case UHID_FEATURE:
       APPL_TRACE_DEBUG("UHID_FEATURE from uhid-dev\n");
       break;
     case UHID_FEATURE_ANSWER:
       APPL_TRACE_DEBUG("UHID_FEATURE_ANSWER from uhid-dev\n");
       break;
-
+#endif  //  (LINUX_VERSION_CODE > KERNEL_VERSION(3,18,00))
     default:
       APPL_TRACE_DEBUG("Invalid event from uhid-dev: %u\n", ev.type);
   }
@@ -344,6 +503,14 @@ void bta_hh_co_open(uint8_t dev_handle, uint8_t sub_class,
   }
 
   p_dev->dev_status = BTHH_CONN_STATE_CONNECTED;
+  memset(&p_dev->last_output_rpt_data, 0, BTIF_HH_OUTPUT_REPORT_SIZE);
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 18, 00))
+  p_dev->set_rpt_id_queue = fixed_queue_new(SIZE_MAX);
+  CHECK(p_dev->set_rpt_id_queue);
+  p_dev->get_rpt_id_queue = fixed_queue_new(SIZE_MAX);
+  CHECK(p_dev->get_rpt_id_queue);
+#endif  //  (LINUX_VERSION_CODE > KERNEL_VERSION(3,18,00))
+
   APPL_TRACE_DEBUG("%s: Return device status %d", __func__, p_dev->dev_status);
 }
 
@@ -373,12 +540,19 @@ void bta_hh_co_close(uint8_t dev_handle, uint8_t app_id) {
 
   for (i = 0; i < BTIF_HH_MAX_HID; i++) {
     p_dev = &btif_hh_cb.devices[i];
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 18, 00))
+    fixed_queue_free(p_dev->set_rpt_id_queue, NULL);
+    p_dev->set_rpt_id_queue = NULL;
+    fixed_queue_free(p_dev->get_rpt_id_queue, NULL);
+    p_dev->get_rpt_id_queue = NULL;
+#endif  //  (LINUX_VERSION_CODE > KERNEL_VERSION(3,18,00))
     if (p_dev->dev_status != BTHH_CONN_STATE_UNKNOWN &&
         p_dev->dev_handle == dev_handle) {
       APPL_TRACE_WARNING(
           "%s: Found an existing device with the same handle "
           "dev_status = %d, dev_handle =%d",
           __func__, p_dev->dev_status, p_dev->dev_handle);
+      memset(&p_dev->last_output_rpt_data, 0, BTIF_HH_OUTPUT_REPORT_SIZE);
       btif_hh_close_poll_thread(p_dev);
       break;
     }
@@ -471,6 +645,11 @@ void bta_hh_co_send_hid_info(btif_hh_device_t* p_dev, const char* dev_name,
       "ctry_code=0x%02x",
       __func__, vendor_id, product_id, version, ctry_code);
 
+  if (interop_match_vendor_product_ids(INTEROP_REMOVE_HID_DIG_DESCRIPTOR,
+                                       vendor_id, product_id) ||
+      interop_match_name(INTEROP_REMOVE_HID_DIG_DESCRIPTOR, dev_name))
+    remove_digitizer_descriptor(p_dscp, (uint16_t*)&dscp_len);
+
   // Create and send hid descriptor to kernel
   memset(&ev, 0, sizeof(ev));
   ev.type = UHID_CREATE;
@@ -501,6 +680,91 @@ void bta_hh_co_send_hid_info(btif_hh_device_t* p_dev, const char* dev_name,
     close(p_dev->fd);
     p_dev->fd = -1;
   }
+}
+
+/*******************************************************************************
+ *
+ * Function         bta_hh_co_set_rpt_rsp
+ *
+ * Description      This callout function is executed by HH when Set Report
+ *                  Response is received on Control Channel.
+ *
+ * Returns          void.
+ *
+ ******************************************************************************/
+void bta_hh_co_set_rpt_rsp(uint8_t dev_handle, uint8_t status) {
+  btif_hh_device_t* p_dev;
+
+  APPL_TRACE_VERBOSE("%s: dev_handle = %d, status = %d", __func__, dev_handle,
+                     status);
+
+  p_dev = btif_hh_find_connected_dev_by_handle(dev_handle);
+  if (p_dev == NULL) {
+    APPL_TRACE_WARNING("%s: Error: unknown HID device handle %d", __func__,
+                       dev_handle);
+    return;
+  }
+  if (!p_dev->set_rpt_id_queue || p_dev->fd < 0) return;
+
+  // Send the HID report to the kernel.
+  struct uhid_event ev;
+  uint32_t* set_rpt_id =
+      (uint32_t*)fixed_queue_dequeue(p_dev->set_rpt_id_queue);
+  memset(&ev, 0, sizeof(ev));
+  ev.type = UHID_SET_REPORT_REPLY;
+  /* get the report id from queue_start pointer */
+  ev.u.set_report_reply.id = *set_rpt_id;
+  APPL_TRACE_VERBOSE("%s: set_report_reply_id = %d", __func__,
+                     ev.u.set_report_reply.id);
+  ev.u.set_report_reply.err = status;
+  uhid_write(p_dev->fd, &ev);
+}
+
+/*******************************************************************************
+ *
+ * Function         bta_hh_co_get_rpt_rsp
+ *
+ * Description      This callout function is executed by HH when Get Report
+ *                  Response is received on Control Channel.
+ *
+ * Returns          void.
+ *
+ ******************************************************************************/
+void bta_hh_co_get_rpt_rsp(uint8_t dev_handle, uint8_t status, uint8_t* p_rpt,
+                           uint16_t len) {
+  btif_hh_device_t* p_dev;
+
+  APPL_TRACE_VERBOSE("%s: dev_handle = %d. status = %d, len = %d", __func__,
+                     dev_handle, status, len);
+
+  p_dev = btif_hh_find_connected_dev_by_handle(dev_handle);
+  if (p_dev == NULL) {
+    APPL_TRACE_WARNING("%s: Error: unknown HID device handle %d", __func__,
+                       dev_handle);
+    return;
+  }
+  if (!p_dev->get_rpt_id_queue || p_dev->fd < 0) return;
+
+  // Send the HID report to the kernel.
+  struct uhid_event ev;
+  uint32_t* get_rpt_id =
+      (uint32_t*)fixed_queue_dequeue(p_dev->get_rpt_id_queue);
+  memset(&ev, 0, sizeof(ev));
+  ev.type = UHID_GET_REPORT_REPLY;
+  ev.u.get_report_reply.err = status;
+  ev.u.get_report_reply.size = len;
+  /* get the report id from queue_start pointer */
+  ev.u.get_report_reply.id = *get_rpt_id;
+  APPL_TRACE_VERBOSE("%s: get_report_reply_id = %d", __func__,
+                     ev.u.get_report_reply.id);
+  if (len > 0) {
+    if (len > UHID_DATA_MAX) {
+      APPL_TRACE_WARNING("%s: Report size greater than allowed size", __func__);
+      return;
+    }
+    memcpy(ev.u.get_report_reply.data, p_rpt, len);
+  }
+  uhid_write(p_dev->fd, &ev);
 }
 
 #if (BTA_HH_LE_INCLUDED == TRUE)
@@ -569,7 +833,7 @@ tBTA_HH_RPT_CACHE_ENTRY* bta_hh_le_co_cache_load(BD_ADDR remote_bda,
            remote_bda[5]);
 
   size_t len = btif_config_get_bin_length(bdstr, "HidReport");
-  if (!p_num_rpt && len < sizeof(tBTA_HH_RPT_CACHE_ENTRY)) return NULL;
+  if (!p_num_rpt || len < sizeof(tBTA_HH_RPT_CACHE_ENTRY)) return NULL;
 
   if (len > sizeof(sReportCache)) len = sizeof(sReportCache);
   btif_config_get_bin(bdstr, "HidReport", (uint8_t*)sReportCache, &len);

@@ -620,7 +620,7 @@ void bta_hh_data_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data) {
  *
  * Function         bta_hh_handsk_act
  *
- * Description      HID Host process a handshake acknoledgement.
+ * Description      HID Host process a handshake acknowledgement.
  *
  *
  * Returns          void
@@ -650,7 +650,8 @@ void bta_hh_handsk_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data) {
       /* if handshake gives an OK code for these transaction, fill in UNSUPT */
       hs_data.status = bta_hh_get_trans_status(p_data->hid_cback.data);
       if (hs_data.status == BTA_HH_OK) hs_data.status = BTA_HH_HS_TRANS_NOT_SPT;
-
+      if (p_cb->w4_evt == BTA_HH_GET_RPT_EVT)
+        bta_hh_co_get_rpt_rsp(cback_data.handle, hs_data.status, NULL, 0);
       (*bta_hh_cb.p_cback)(p_cb->w4_evt, (tBTA_HH*)&hs_data);
       p_cb->w4_evt = 0;
       break;
@@ -661,6 +662,8 @@ void bta_hh_handsk_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data) {
     case BTA_HH_SET_IDLE_EVT:
       cback_data.handle = p_cb->hid_handle;
       cback_data.status = bta_hh_get_trans_status(p_data->hid_cback.data);
+      if (p_cb->w4_evt == BTA_HH_SET_RPT_EVT)
+        bta_hh_co_set_rpt_rsp(cback_data.handle, cback_data.status);
       (*bta_hh_cb.p_cback)(p_cb->w4_evt, (tBTA_HH*)&cback_data);
       p_cb->w4_evt = 0;
       break;
@@ -715,6 +718,8 @@ void bta_hh_ctrl_dat_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data) {
       break;
     case BTA_HH_GET_RPT_EVT:
       hs_data.rsp_data.p_rpt_data = pdata;
+      bta_hh_co_get_rpt_rsp(hs_data.handle, hs_data.status, pdata->data,
+                            pdata->len);
       break;
     case BTA_HH_GET_PROTO_EVT:
       /* match up BTE/BTA report/boot mode def*/
@@ -775,9 +780,17 @@ void bta_hh_open_failure(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data) {
   bdcpy(conn_dat.bda, p_cb->addr);
   HID_HostCloseDev(p_cb->hid_handle);
 
+#if BTA_HH_DEBUG
+  APPL_TRACE_DEBUG("bta_hh_open_failure: hid_handle = %d", p_cb->hid_handle);
+#endif
   /* Report OPEN fail event */
   (*bta_hh_cb.p_cback)(BTA_HH_OPEN_EVT, (tBTA_HH*)&conn_dat);
 
+  /* if virtually unplug, remove device */
+  if (p_cb->vp ) {
+    HID_HostRemoveDev( p_cb->hid_handle);
+    bta_hh_clean_up_kdev(p_cb);
+  }
 #if (BTA_HH_DEBUG == TRUE)
   bta_hh_trace_dev_db();
 #endif
@@ -813,6 +826,9 @@ void bta_hh_close_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data) {
   /* if HID_HDEV_EVT_VC_UNPLUG was received, report BTA_HH_VC_UNPLUG_EVT */
   uint16_t event = p_cb->vp ? BTA_HH_VC_UNPLUG_EVT : BTA_HH_CLOSE_EVT;
 
+#if BTA_HH_DEBUG
+    APPL_TRACE_DEBUG("bta_hh_close_act: reason = %d", reason);
+#endif
   disc_dat.handle = p_cb->hid_handle;
   disc_dat.status = p_data->hid_cback.data;
 
@@ -829,6 +845,8 @@ void bta_hh_close_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data) {
     conn_dat.status =
         (reason == HID_ERR_AUTH_FAILED) ? BTA_HH_ERR_AUTH_FAILED : BTA_HH_ERR;
     bdcpy(conn_dat.bda, p_cb->addr);
+    /* finalize device driver */
+    bta_hh_co_close(p_cb->hid_handle, p_cb->app_id);
     HID_HostCloseDev(p_cb->hid_handle);
 
     /* Report OPEN fail event */
@@ -1131,6 +1149,19 @@ static void bta_hh_cback(uint8_t dev_handle, BD_ADDR addr, uint8_t event,
         if (bta_hh_cb.kdev[xx].hid_handle == dev_handle) {
           bta_hh_cb.kdev[xx].vp = true;
           break;
+        }
+      }
+      if (xx == BTA_HH_MAX_DEVICE) {
+        for (xx = 0; xx < BTA_HH_MAX_DEVICE; xx++) {
+          /* No device matched entry for VC, check if VC receivied in waiting
+           * for conn state */
+          APPL_TRACE_DEBUG("bta_hh_cb.kdev[xx].state = %d",
+              bta_hh_cb.kdev[xx].state);
+          if (bta_hh_cb.kdev[xx].state == BTA_HH_W4_CONN_ST) {
+             bta_hh_cb.kdev[xx].hid_handle = dev_handle;
+             bta_hh_cb.kdev[xx].vp = TRUE;
+             break;
+          }
         }
       }
       break;

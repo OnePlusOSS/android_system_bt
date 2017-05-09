@@ -495,15 +495,7 @@ void handle_rc_features(btif_rc_device_cb_t* p_dev) {
   bdcpy(rc_addr.address, p_dev->rc_addr);
   bdstr_t addr1, addr2;
 
-  if (bt_rc_callbacks == NULL) {
-    BTIF_TRACE_ERROR("%s: bt_rc_callbacks NULL, disabling TG role for %s",
-                     __func__,
-                     bdaddr_to_string(&rc_addr, addr2, sizeof(addr2)));
-    p_dev->rc_features &= ~BTA_AV_FEAT_ADV_CTRL;
-    p_dev->rc_features &= ~BTA_AV_FEAT_BROWSE;
-    p_dev->rc_features &= ~BTA_AV_FEAT_METADATA;
-    return;
-  }
+  CHECK(bt_rc_callbacks);
 
   btrc_remote_features_t rc_features = BTRC_FEAT_NONE;
   bt_bdaddr_t avdtp_addr = btif_av_get_addr();
@@ -1054,7 +1046,9 @@ void btif_rc_handler(tBTA_AV_EVT event, tBTA_AV* p_data) {
       }
 
       p_dev->rc_features = p_data->rc_feat.peer_features;
-      handle_rc_features(p_dev);
+      if (bt_rc_callbacks != NULL) {
+        handle_rc_features(p_dev);
+      }
 
       if ((p_dev->rc_connected) && (bt_rc_ctrl_callbacks != NULL)) {
         handle_rc_ctrl_features(p_dev);
@@ -1621,8 +1615,8 @@ static void btif_rc_upstreams_evt(uint16_t event, tAVRC_COMMAND* pavrc_cmd,
     case AVRC_PDU_GET_ITEM_ATTRIBUTES: {
       btrc_media_attr_t item_attrs[BTRC_MAX_ELEM_ATTR_SIZE];
       uint8_t num_attr = fill_attribute_id_array(
-          pavrc_cmd->get_elem_attrs.num_attr,
-          (btrc_media_attr_t*)pavrc_cmd->get_elem_attrs.attrs,
+          pavrc_cmd->get_attrs.attr_count,
+          (btrc_media_attr_t*)pavrc_cmd->get_attrs.p_attr_list,
           BTRC_MAX_ELEM_ATTR_SIZE, item_attrs);
       if (num_attr == 0) {
         BTIF_TRACE_ERROR(
@@ -2751,6 +2745,16 @@ static void handle_rc_metamsg_rsp(tBTA_AV_META_MSG* pmeta_msg,
       BTIF_TRACE_DEBUG(
           "%s: Discarding register notification in rsp.code: %d and label: %d",
           __func__, pmeta_msg->code, pmeta_msg->label);
+      return;
+    }
+
+    if (AVRC_PDU_REGISTER_NOTIFICATION == avrc_response.rsp.pdu &&
+        AVRC_EVT_VOLUME_CHANGE == avrc_response.reg_notif.event_id &&
+        (AVRC_RSP_REJ == pmeta_msg->code ||
+         AVRC_RSP_NOT_IMPL == pmeta_msg->code)) {
+      BTIF_TRACE_DEBUG("%s remove AbsoluteVolume feature flag.", __func__);
+      p_dev->rc_features &= ~BTA_AV_FEAT_ADV_CTRL;
+      handle_rc_features(p_dev);
       return;
     }
   } else {
