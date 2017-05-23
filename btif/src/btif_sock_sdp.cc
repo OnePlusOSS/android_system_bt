@@ -83,6 +83,8 @@ static const tBTA_OP_FMT bta_ops_obj_fmt[OBEX_PUSH_NUM_FORMATS] = {
 
 #define RESERVED_SCN_PBS 19
 #define RESERVED_SCN_OPS 12
+#define RESERVED_SCN_FTP 20
+#define RESERVED_SCN_DUN 25
 
 #define UUID_MAX_LENGTH 16
 #define UUID_MATCHES(u1, u2) !memcmp(u1, u2, UUID_MAX_LENGTH)
@@ -373,6 +375,96 @@ error:
   return 0;
 }
 
+
+
+static int add_ftp_sdp(const char *name, const int channel)
+{
+  uint16_t service = UUID_SERVCLASS_OBEX_FILE_TRANSFER;
+  APPL_TRACE_DEBUG("add_ftp_sdp: channel %d, service name %s", channel, name);
+
+  int handle = SDP_CreateRecord();
+  if (handle == 0) {
+    APPL_TRACE_ERROR("add_ftp_sdp: failed to create sdp record, "
+                     "service_name: %s", name);
+    return 0;
+  }
+
+  // Create the base SDP record.
+  char *stage = (char *)"create_base_record";
+  if (!create_base_record(handle, name, channel, true /* with_obex */))
+    goto error;
+
+  // Add service class.
+  stage =(char*) "service_class";
+  if (!SDP_AddServiceClassIdList(handle, 1, &service))
+    goto error;
+
+  // Add the FTP profile descriptor.
+  stage = (char*)"profile_descriptor_list";
+  if (!SDP_AddProfileDescriptorList(handle, UUID_SERVCLASS_OBEX_FILE_TRANSFER,
+                                    0x0101))
+    goto error;
+
+  // Notify the system that we've got a new service class UUID.
+  bta_sys_add_uuid(UUID_SERVCLASS_OBEX_FILE_TRANSFER);
+  APPL_TRACE_DEBUG("add_ftp_sdp: service registered successfully, "
+                   "service_name: %s, handle 0x%08x)", name, handle);
+
+  return handle;
+
+error:
+  SDP_DeleteRecord(handle);
+  APPL_TRACE_ERROR("add_ftp_sdp: failed to register FTP service, "
+                   "stage: %s, service_name: %s", stage, name);
+  return 0;
+
+}
+
+static int add_dun_sdp(const char *name, const int channel)
+{
+  APPL_TRACE_DEBUG("add_dun_sdp: channel %d, service name %s", channel, name);
+
+  int handle = SDP_CreateRecord();
+  if (handle == 0) {
+    APPL_TRACE_ERROR("add_dun_sdp: failed to create sdp record, "
+                     "service_name: %s", name);
+    return 0;
+  }
+
+  // Create the base SDP record.
+  char *stage =(char*) "create_base_record";
+  if (!create_base_record(handle, name, channel, false /* with_obex */))
+    goto error;
+
+  // Add service class.
+  uint16_t      servclass[2];
+  servclass[0] = UUID_SERVCLASS_DIALUP_NETWORKING;
+  servclass[1] = UUID_SERVCLASS_GENERIC_NETWORKING;
+  stage = (char *)"service_class";
+  if (!SDP_AddServiceClassIdList(handle, 2, servclass))
+    goto error;
+
+  // Add the DUN profile descriptor.
+  stage = (char*)"profile_descriptor_list";
+  if (!SDP_AddProfileDescriptorList(handle, UUID_SERVCLASS_DIALUP_NETWORKING,
+                                    0x0101))
+    goto error;
+
+  // Notify the system that we've got a new service class UUID.
+  bta_sys_add_uuid(UUID_SERVCLASS_DIALUP_NETWORKING);
+  APPL_TRACE_DEBUG("add_dun_sdp: service registered successfully, "
+                   "service_name: %s, handle 0x%08x)", name, handle);
+
+  return handle;
+
+error:
+  SDP_DeleteRecord(handle);
+  APPL_TRACE_ERROR("add_dun_sdp: failed to register DUN service, "
+                   "stage: %s, service_name: %s", stage, name);
+  return 0;
+
+}
+
 // Adds an RFCOMM SDP record for a service with the given |name|, |uuid|, and
 // |channel|. This function attempts to identify the type of the service based
 // upon its |uuid|, and will override the |channel| with a reserved channel
@@ -412,6 +504,10 @@ static int add_rfc_sdp_by_uuid(const char* name, const uint8_t* uuid,
   } else if (UUID_MATCHES(UUID_MAP_MAS, uuid)) {
     // Record created by new SDP create record interface
     handle = 0xff;
+  } else if (UUID_MATCHES(UUID_FTP,uuid)) {
+    handle = add_ftp_sdp(name, final_channel);
+  } else if (UUID_MATCHES(UUID_DUN,uuid)) {
+    handle = add_dun_sdp(name, final_channel);
   } else {
     handle = add_sdp_by_uuid(name, uuid, final_channel);
   }
@@ -423,6 +519,8 @@ bool is_reserved_rfc_channel(const int channel) {
   switch (channel) {
     case RESERVED_SCN_PBS:
     case RESERVED_SCN_OPS:
+    case RESERVED_SCN_FTP:
+    case RESERVED_SCN_DUN:
       return true;
   }
 
@@ -434,6 +532,10 @@ int get_reserved_rfc_channel(const uint8_t* uuid) {
     return RESERVED_SCN_PBS;
   } else if (UUID_MATCHES(UUID_OBEX_OBJECT_PUSH, uuid)) {
     return RESERVED_SCN_OPS;
+  } else if (UUID_MATCHES(UUID_FTP, uuid)) {
+    return RESERVED_SCN_FTP;
+  } else if (UUID_MATCHES(UUID_DUN, uuid)) {
+    return RESERVED_SCN_DUN;
   }
 
   return -1;
@@ -451,6 +553,14 @@ int add_rfc_sdp_rec(const char* name, const uint8_t* uuid, const int channel) {
 
       case RESERVED_SCN_OPS:
         uuid = UUID_OBEX_OBJECT_PUSH;
+        break;
+
+      case RESERVED_SCN_FTP:
+        uuid = UUID_FTP;
+        break;
+
+      case RESERVED_SCN_DUN:
+        uuid = UUID_DUN;
         break;
 
       default:

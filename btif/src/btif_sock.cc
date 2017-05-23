@@ -43,6 +43,12 @@ static bt_status_t btsock_connect(const bt_bdaddr_t* bd_addr,
                                   btsock_type_t type, const uint8_t* uuid,
                                   int channel, int* sock_fd, int flags,
                                   int app_uid);
+static bt_status_t btsock_get_sockopt(btsock_type_t type, int channel,
+                                      btsock_option_type_t option_name,
+                                      void *option_value, int *option_len);
+static bt_status_t btsock_set_sockopt(btsock_type_t type, int channel,
+                                      btsock_option_type_t option_name,
+                                      void *option_value, int option_len);
 
 static void btsock_signaled(int fd, int type, int flags, uint32_t user_id);
 
@@ -51,7 +57,8 @@ static thread_t* thread;
 
 btsock_interface_t* btif_sock_get_interface(void) {
   static btsock_interface_t interface = {sizeof(interface), btsock_listen,
-                                         btsock_connect};
+                                         btsock_connect,btsock_get_sockopt,
+                                         btsock_set_sockopt};
 
   return &interface;
 }
@@ -200,4 +207,70 @@ static void btsock_signaled(int fd, int type, int flags, uint32_t user_id) {
       CHECK(false && "Invalid socket type");
       break;
   }
+}
+
+
+static bt_status_t btsock_get_sockopt(btsock_type_t type, int channel,
+                                      btsock_option_type_t option_name,
+                                      void *option_value, int *option_len)
+{
+    if((channel <= 0) || (option_value == NULL) || (option_len == NULL))
+    {
+        BTIF_TRACE_ERROR("invalid parameters, channel:%d, option_value:%p, option_len:%p", channel,
+                                                                        option_value, option_len);
+        return BT_STATUS_PARM_INVALID;
+    }
+
+    bt_status_t status = BT_STATUS_FAIL;
+    switch(type)
+    {
+        case BTSOCK_RFCOMM:
+            status = btsock_rfc_get_sockopt(channel, option_name, option_value, option_len);
+            break;
+        case BTSOCK_L2CAP:
+            BTIF_TRACE_ERROR("bt l2cap socket type not supported, type:%d", type);
+            status = BT_STATUS_UNSUPPORTED;
+            break;
+        case BTSOCK_SCO:
+            BTIF_TRACE_ERROR("bt sco socket not supported, type:%d", type);
+            status = BT_STATUS_UNSUPPORTED;
+            break;
+        default:
+            BTIF_TRACE_ERROR("unknown bt socket type:%d", type);
+            status = BT_STATUS_UNSUPPORTED;
+            break;
+    }
+    return status;
+}
+
+static bt_status_t btsock_set_sockopt(btsock_type_t type, int channel,
+                                      btsock_option_type_t option_name,
+                                      void *option_value, int option_len)
+{
+    if((channel <= 0) || (option_value == NULL))
+    {
+        BTIF_TRACE_ERROR("invalid parameters, channel:%d, option_value:%p", channel, option_value);
+        return BT_STATUS_PARM_INVALID;
+    }
+
+    bt_status_t status = BT_STATUS_FAIL;
+    switch(type)
+    {
+        case BTSOCK_RFCOMM:
+            status = btsock_rfc_set_sockopt(channel, option_name, option_value, option_len);
+            break;
+        case BTSOCK_L2CAP:
+            BTIF_TRACE_ERROR("bt l2cap socket type not supported, type:%d", type);
+            status = BT_STATUS_UNSUPPORTED;
+            break;
+        case BTSOCK_SCO:
+            BTIF_TRACE_ERROR("bt sco socket not supported, type:%d", type);
+            status = BT_STATUS_UNSUPPORTED;
+            break;
+        default:
+            BTIF_TRACE_ERROR("unknown bt socket type:%d", type);
+            status = BT_STATUS_UNSUPPORTED;
+            break;
+    }
+    return status;
 }

@@ -59,6 +59,11 @@
  * L2CAP functions from this file. */
 #include "btif_sock_l2cap.h"
 
+#define MODEM_SIGNAL_DTRDSR        0x01
+#define MODEM_SIGNAL_RTSCTS        0x02
+#define MODEM_SIGNAL_RI            0x04
+#define MODEM_SIGNAL_DCD           0x08
+
 // Maximum number of RFCOMM channels (1-30 inclusive).
 #define MAX_RFC_CHANNEL 30
 
@@ -926,4 +931,117 @@ int bta_co_rfc_data_outgoing(uint32_t id, uint8_t* buf, uint16_t size) {
   }
 
   return true;
+}
+
+static rfc_slot_t* find_rfc_slot_by_scn(int scn)
+{
+    int i;
+    if(scn > 0)
+    {
+        /* traverse it from the last entry, as incase of
+         * server two entries will exist with the same scn
+         * and the later entry is valid
+         */
+        for(i = MAX_RFC_CHANNEL-1; i >= 0; i--)
+        {
+            if(rfc_slots[i].scn == scn)
+            {
+                if(rfc_slots[i].id)
+                    return &rfc_slots[i];
+            }
+        }
+    }
+    return NULL;
+}
+
+
+bt_status_t btsock_rfc_get_sockopt(int channel, btsock_option_type_t option_name,
+                                            void *option_value, int *option_len)
+{
+    bt_status_t status = BT_STATUS_FAIL;
+
+    APPL_TRACE_DEBUG("btsock_rfc_get_sockopt channel is %d ", channel);
+    if((channel < 1) || (channel > 30) || (option_value == NULL) || (option_len == NULL))
+    {
+        APPL_TRACE_ERROR("invalid rfc channel:%d or option_value:%p, option_len:%p",
+                                             channel, option_value, option_len);
+        return BT_STATUS_PARM_INVALID;
+    }
+    rfc_slot_t* rs = find_rfc_slot_by_scn(channel);
+    if((rs) && ((option_name == BTSOCK_OPT_GET_MODEM_BITS)))
+    {
+        if(PORT_SUCCESS == PORT_GetModemStatus(rs->rfc_port_handle, (uint8_t  *)option_value))
+        {
+            *option_len = sizeof(uint8_t);
+            status = BT_STATUS_SUCCESS;
+        }
+    }
+    return status;
+}
+
+
+bt_status_t btsock_rfc_set_sockopt(int channel, btsock_option_type_t option_name,
+                                            void *option_value, int option_len)
+{
+    bt_status_t status = BT_STATUS_FAIL;
+
+    APPL_TRACE_DEBUG("btsock_rfc_get_sockopt channel is %d ", channel);
+    if((channel < 1) || (channel > 30) || (option_value == NULL) || (option_len <= 0)
+                     || (option_len > (int)sizeof(uint8_t)))
+    {
+        APPL_TRACE_ERROR("invalid rfc channel:%d or option_value:%p, option_len:%d",
+                                        channel, option_value, option_len);
+        return BT_STATUS_PARM_INVALID;
+    }
+    rfc_slot_t* rs = find_rfc_slot_by_scn(channel);
+    if((rs) && ((option_name == BTSOCK_OPT_SET_MODEM_BITS)))
+    {
+        if((*((uint8_t *)option_value)) & MODEM_SIGNAL_DTRDSR)
+        {
+            if(PORT_SUCCESS != PORT_Control(rs->rfc_port_handle, PORT_SET_DTRDSR))
+                return status;
+        }
+        if((*((uint8_t *)option_value)) & MODEM_SIGNAL_RTSCTS)
+        {
+            if(PORT_SUCCESS != PORT_Control(rs->rfc_port_handle, PORT_SET_CTSRTS))
+                return status;
+        }
+        if((*((uint8_t *)option_value)) & MODEM_SIGNAL_RI)
+        {
+            if(PORT_SUCCESS != PORT_Control(rs->rfc_port_handle, PORT_SET_RI))
+                return status;
+        }
+        if((*((uint8_t *)option_value)) & MODEM_SIGNAL_DCD)
+        {
+            if(PORT_SUCCESS != PORT_Control(rs->rfc_port_handle, PORT_SET_DCD))
+                return status;
+        }
+        status = BT_STATUS_SUCCESS;
+    }
+    else if((rs) && ((option_name == BTSOCK_OPT_CLR_MODEM_BITS)))
+    {
+        if((*((uint8_t *)option_value)) & MODEM_SIGNAL_DTRDSR)
+        {
+            if(PORT_SUCCESS != PORT_Control(rs->rfc_port_handle, PORT_CLR_DTRDSR))
+                return status;
+        }
+        if((*((uint8_t *)option_value)) & MODEM_SIGNAL_RTSCTS)
+        {
+            if(PORT_SUCCESS != PORT_Control(rs->rfc_port_handle, PORT_CLR_CTSRTS))
+                return status;
+        }
+        if((*((uint8_t *)option_value)) & MODEM_SIGNAL_RI)
+        {
+            if(PORT_SUCCESS != PORT_Control(rs->rfc_port_handle, PORT_CLR_RI))
+                return status;
+        }
+        if((*((uint8_t *)option_value)) & MODEM_SIGNAL_DCD)
+        {
+            if(PORT_SUCCESS != PORT_Control(rs->rfc_port_handle, PORT_CLR_DCD))
+                return status;
+        }
+        status = BT_STATUS_SUCCESS;
+    }
+
+    return status;
 }

@@ -42,6 +42,13 @@ static const interop_addr_entry_t interop_addr_database[] = {
     {{{0xac, 0x9e, 0x17, 0, 0, 0}}, 3, INTEROP_DISABLE_LE_SECURE_CONNECTIONS},
     {{{0xf0, 0x79, 0x59, 0, 0, 0}}, 3, INTEROP_DISABLE_LE_SECURE_CONNECTIONS},
 
+    {{{0x08, 0x62, 0x66, 0, 0, 0}}, 3, INTEROP_HID_PREF_CONN_SUP_TIMEOUT_3S},
+    {{{0x38, 0x2c, 0x4a, 0xc9, 0, 0}}, 4, INTEROP_HID_PREF_CONN_SUP_TIMEOUT_3S},
+    {{{0x38, 0x2c, 0x4a, 0xe6, 0, 0}}, 4, INTEROP_HID_PREF_CONN_SUP_TIMEOUT_3S},
+    {{{0x54, 0xa0, 0x50, 0xd9, 0, 0}}, 4, INTEROP_HID_PREF_CONN_SUP_TIMEOUT_3S},
+    {{{0xac, 0x9e, 0x17, 0, 0, 0}}, 3, INTEROP_HID_PREF_CONN_SUP_TIMEOUT_3S},
+    {{{0xf0, 0x79, 0x59, 0, 0, 0}}, 3, INTEROP_HID_PREF_CONN_SUP_TIMEOUT_3S},
+
     // Ausdom M05 - unacceptably loud volume
     {{{0xa0, 0xe9, 0xdb, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
 
@@ -115,6 +122,8 @@ static const interop_addr_entry_t interop_addr_database[] = {
     {{{0x60, 0x45, 0xBD, 0, 0, 0}}, 3, INTEROP_DISABLE_SDP_AFTER_PAIRING},
     // Bluetooth Keyboard
     {{{0x20, 0x4C, 0x10, 0, 0, 0}}, 3, INTEROP_DISABLE_SNIFF_DURING_SCO},
+    // Kinivo BTC-450 - volume is erratic when using Absolute Volume
+    {{{0x00, 0x18, 0x91, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
 };
 
 typedef struct {

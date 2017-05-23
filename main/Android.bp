@@ -12,6 +12,7 @@ cc_library_shared {
         "bte_logmsg.cc",
         "bte_main.cc",
         "stack_config.cc",
+        "wipower.cc"
     ],
     include_dirs: [
         "system/bt",
@@ -33,6 +34,7 @@ cc_library_shared {
         "system/bt/embdrv/sbc/encoder/include",
         "system/bt/embdrv/sbc/decoder/include",
         "system/bt/utils/include",
+        "vendor/qcom/opensource/bluetooth/hal/include",
     ],
     logtags: ["../EventLogTags.logtags"],
     shared_libs: [

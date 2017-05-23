@@ -54,8 +54,7 @@ static const tA2DP_AAC_CIE a2dp_aac_caps = {
     // objectType
     A2DP_AAC_OBJECT_TYPE_MPEG2_LC,
     // sampleRate
-    (A2DP_AAC_SAMPLING_FREQ_44100 | A2DP_AAC_SAMPLING_FREQ_48000 |
-     A2DP_AAC_SAMPLING_FREQ_88200 | A2DP_AAC_SAMPLING_FREQ_96000),
+    (A2DP_AAC_SAMPLING_FREQ_44100 | A2DP_AAC_SAMPLING_FREQ_48000),
     // channelMode
     A2DP_AAC_CHANNEL_MODE_STEREO,
     // variableBitRateSupport
@@ -722,6 +721,8 @@ bool A2dpCodecConfigAac::init() {
 
   return true;
 }
+
+bool A2dpCodecConfigAac::useRtpHeaderMarkerBit() const { return true; }
 
 //
 // Selects the best sample rate from |sampleRate|.

@@ -32,6 +32,16 @@
 #include "ble_advertiser_hci_interface.h"
 #include "btm_int_types.h"
 
+#ifdef WIPOWER_SUPPORTED
+#define BTM_BLE_MULTI_ADV_DEFAULT_STD 0xFF
+
+#define WIPOWER_16_UUID_LSB 0xFE
+#define WIPOWER_16_UUID_MSB 0xFF
+
+static bool is_wipower_adv = false;
+uint8_t wipower_inst_id  = BTM_BLE_MULTI_ADV_DEFAULT_STD;
+#endif
+
 using base::Bind;
 using RegisterCb =
     base::Callback<void(uint8_t /* inst_id */, uint8_t /* status */)>;
@@ -674,6 +684,15 @@ class BleAdvertisingManagerImpl
         i += data[i] + 1;
       }
     }
+#ifdef WIPOWER_SUPPORTED
+    if (data.size() >= 6) {
+      if (data[5] == WIPOWER_16_UUID_LSB && data[6] == WIPOWER_16_UUID_MSB)
+      {
+        is_wipower_adv = true;
+        wipower_inst_id = inst_id;
+      }
+    }
+#endif
 
     VLOG(1) << "data is: " << base::HexEncode(data.data(), data.size());
     DivideAndSendData(
@@ -814,8 +833,15 @@ class BleAdvertisingManagerImpl
       // right now. This should probably be removed, check with Andre.
       if ((p_inst->advertising_event_properties & 0x0C) ==
           0 /* directed advertising bits not set */) {
-        GetHciInterface()->Enable(true, advertising_handle, 0x00, 0x00,
+#ifdef WIPOWER_SUPPORTED
+        if (!(is_wipower_adv && (advertising_handle == wipower_inst_id))) {
+            GetHciInterface()->Enable(true, advertising_handle, 0x00, 0x00,
                                   Bind(DoNothing));
+        }
+#else
+        GetHciInterface()->Enable(true, advertising_handle, 0x00, 0x00,
+                                    Bind(DoNothing));
+#endif
       } else {
         /* mark directed adv as disabled if adv has been stopped */
         p_inst->in_use = false;
@@ -879,6 +905,10 @@ void btm_ble_adv_init() {
  *
  ******************************************************************************/
 void btm_ble_multi_adv_cleanup(void) {
+#ifdef WIPOWER_SUPPORTED
+  is_wipower_adv = false;
+  wipower_inst_id = BTM_BLE_MULTI_ADV_DEFAULT_STD;
+#endif
   BleAdvertisingManager::CleanUp();
   BleAdvertiserHciInterface::CleanUp();
 }

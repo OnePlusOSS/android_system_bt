@@ -20,6 +20,7 @@ btifCommonIncludes = [
     "system/bt/embdrv/sbc/encoder/include",
     "system/bt/embdrv/sbc/decoder/include",
     "system/bt/utils/include",
+    "vendor/qcom/opensource/bluetooth/hal/include",
 ]
 
 // libbtif static library for target
