@@ -1145,13 +1145,14 @@ static void btu_hcif_hdl_command_status(uint16_t opcode, uint8_t status,
 
 #if (BTM_SCO_INCLUDED == TRUE)
           case HCI_SETUP_ESCO_CONNECTION:
+          case HCI_ENH_SETUP_ESCO_CONNECTION:
             /* read handle out of stored command */
             if (p_cmd != NULL) {
               p_cmd++;
               STREAM_TO_UINT16(handle, p_cmd);
 
-              /* Determine if initial connection failed or is a change of setup
-               */
+              /* Determine if initial connection failed or is a change
+               * of setup */
               if (btm_is_sco_active(handle))
                 btm_esco_proc_conn_chg(status, handle, 0, 0, 0, 0);
               else
@@ -1236,7 +1237,27 @@ static void btu_hcif_hardware_error_evt(uint8_t* p) {
   btm_report_device_status(BTM_DEV_STATUS_DOWN);
 
   /* Reset the controller */
-  if (BTM_IsDeviceUp()) BTM_DeviceReset(NULL);
+  if (BTM_IsDeviceUp()) BTM_HCI_Reset();
+
+  if(*p == 0x0f || (*p == 0x0a))
+  {
+/*   HCI_TRACE_ERROR("Ctlr H/w error event - code:Tigger SSR");
+     bte_ssr_cleanup(0x33);//SSR reason 0x33 = HW ERR EVT */
+     usleep(20000); /* 20 milliseconds */
+     //Reset SOC status to trigger hciattach service
+/*   if(osi_property_set("bluetooth.status", "off") < 0)
+     {
+        ALOGE("SSR: Error resetting SOC status\n ");
+     }
+     else
+     {
+        ALOGE("SSR: SOC Status is reset\n ");
+     }*/
+#if (!defined(SSR_CLEANUP) || (defined(SSR_CLEANUP) && SSR_CLEANUP == FALSE))
+     /* Killing the process to force a restart as part of fault tolerance */
+     kill(getpid(), SIGKILL);
+#endif
+    }
 }
 
 /*******************************************************************************

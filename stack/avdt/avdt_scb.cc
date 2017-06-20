@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2002-2012 Broadcom Corporation
  *
@@ -756,6 +760,8 @@ const tAVDT_SCB_ST_TBL avdt_scb_st_tbl[] = {
     avdt_scb_st_idle, avdt_scb_st_conf,   avdt_scb_st_opening,
     avdt_scb_st_open, avdt_scb_st_stream, avdt_scb_st_closing};
 
+uint8_t max_av_clients = 1;
+
 /*******************************************************************************
  *
  * Function         avdt_scb_event
@@ -990,4 +996,30 @@ void avdt_scb_peer_seid_list(tAVDT_MULTI* p_multi) {
       p_multi->seid_list[i] = p_scb->peer_seid;
     }
   }
+}
+
+/*******************************************************************************
+ *
+ * Function         avdt_scb_max_av_client
+ *
+ * Description      Update max simultaneous AV connections supported
+ *
+ * Returns          Nothing.
+ *
+ ******************************************************************************/
+void avdt_scb_set_max_av_client(uint8_t max_clients) {
+    max_av_clients = max_clients;
+}
+
+/*******************************************************************************
+ *
+ * Function         avdt_scb_get_max_av_client
+ *
+ * Description      Return max simultaneous AV connections supported
+ *
+ * Returns          max av clients supported
+ *
+ ******************************************************************************/
+uint8_t avdt_scb_get_max_av_client() {
+    return max_av_clients;
 }

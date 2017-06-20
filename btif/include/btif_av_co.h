@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2009-2012 Broadcom Corporation
  *
@@ -63,6 +67,10 @@ A2dpCodecs* bta_av_get_a2dp_codecs(void);
 // Gets the current A2DP codec.
 // Returns a pointer to the current |A2dpCodec| if valid, otherwise nullptr.
 A2dpCodecConfig* bta_av_get_a2dp_current_codec(void);
+
+// Sets the current A2DP codec.
+// Returns a the status
+bt_status_t bta_av_set_a2dp_current_codec(tBTA_AV_HNDL hndl);
 
 #ifdef __cplusplus
 }

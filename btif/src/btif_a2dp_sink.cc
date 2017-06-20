@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2016 The Android Open Source Project
  *  Copyright (C) 2009-2012 Broadcom Corporation
@@ -338,7 +342,8 @@ static void btif_a2dp_sink_handle_inc_media(tBT_SBC_HDR* p_msg) {
   uint32_t sbc_frame_len = p_msg->len - 1;
   availPcmBytes = sizeof(btif_a2dp_sink_pcm_data);
 
-  if ((btif_av_get_peer_sep() == AVDT_TSEP_SNK) ||
+  int idx = btif_av_get_latest_playing_device_idx();
+  if ((btif_av_get_peer_sep(idx) == AVDT_TSEP_SNK) ||
       (btif_a2dp_sink_cb.rx_flush)) {
     APPL_TRACE_DEBUG("State Changed happened in this tick");
     return;
@@ -590,4 +595,19 @@ static void btif_a2dp_sink_clear_track_event_req(void) {
 
   p_buf->event = BTIF_MEDIA_SINK_CLEAR_TRACK;
   fixed_queue_enqueue(btif_a2dp_sink_cb.cmd_msg_queue, p_buf);
+}
+
+/*****************************************************************************
+ *
+ * Function        btif_a2dp_on_init
+ *
+ * Description
+ *
+ * Returns         void
+ *
+ ******************************************************************************/
+
+void btif_a2dp_sink_on_init(void) {
+  btif_a2dp_sink_cb.rx_focus_state = BTIF_A2DP_SINK_FOCUS_GRANTED;
+  btif_a2dp_sink_cb.audio_track = NULL;
 }

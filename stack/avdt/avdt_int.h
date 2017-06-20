@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2002-2012 Broadcom Corporation
  *
@@ -520,6 +524,7 @@ typedef struct {
   tAVDT_SCB_ACTION* p_scb_act;     /* pointer to SCB action functions */
   tAVDT_CTRL_CBACK* p_conn_cback;  /* connection callback function */
   uint8_t trace_level;             /* trace level */
+  bool conn_in_progress;           /* outgoing connection in progress */
 } tAVDT_CB;
 
 /*****************************************************************************
@@ -585,6 +590,8 @@ extern uint8_t avdt_scb_verify(tAVDT_CCB* p_ccb, uint8_t state, uint8_t* p_seid,
                                uint16_t num_seid, uint8_t* p_err_code);
 extern void avdt_scb_peer_seid_list(tAVDT_MULTI* p_multi);
 extern uint32_t avdt_scb_gen_ssrc(tAVDT_SCB* p_scb);
+extern void avdt_scb_set_max_av_client(uint8_t num_clients);
+extern uint8_t avdt_scb_get_max_av_client(void);
 
 /* SCB action functions */
 extern void avdt_scb_hdl_abort_cmd(tAVDT_SCB* p_scb, tAVDT_SCB_EVT* p_data);

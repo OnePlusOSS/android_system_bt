@@ -33,7 +33,8 @@
 typedef enum {
   MODULE_STATE_NONE = 0,
   MODULE_STATE_INITIALIZED = 1,
-  MODULE_STATE_STARTED = 2
+  MODULE_STATE_STARTED = 2,
+  MODULE_STATE_STARTUP_ERROR = 3
 } module_state_t;
 
 static std::unordered_map<const module_t*, module_state_t> metadata;
@@ -61,13 +62,11 @@ bool module_init(const module_t* module) {
   CHECK(module != NULL);
   CHECK(get_module_state(module) == MODULE_STATE_NONE);
 
-  LOG_INFO(LOG_TAG, "%s Initializing module \"%s\"", __func__, module->name);
   if (!call_lifecycle_function(module->init)) {
     LOG_ERROR(LOG_TAG, "%s Failed to initialize module \"%s\"", __func__,
               module->name);
     return false;
   }
-  LOG_INFO(LOG_TAG, "%s Initialized module \"%s\"", __func__, module->name);
 
   set_module_state(module, MODULE_STATE_INITIALIZED);
   return true;
@@ -87,6 +86,7 @@ bool module_start_up(const module_t* module) {
   if (!call_lifecycle_function(module->start_up)) {
     LOG_ERROR(LOG_TAG, "%s Failed to start up module \"%s\"", __func__,
               module->name);
+    set_module_state(module, MODULE_STATE_STARTUP_ERROR);
     return false;
   }
   LOG_INFO(LOG_TAG, "%s Started module \"%s\"", __func__, module->name);
@@ -98,7 +98,6 @@ bool module_start_up(const module_t* module) {
 void module_shut_down(const module_t* module) {
   CHECK(module != NULL);
   module_state_t state = get_module_state(module);
-  CHECK(state <= MODULE_STATE_STARTED);
 
   // Only something to do if the module was actually started
   if (state < MODULE_STATE_STARTED) return;

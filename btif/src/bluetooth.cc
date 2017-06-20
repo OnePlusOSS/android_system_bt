@@ -46,6 +46,7 @@
 #include <hardware/bt_sdp.h>
 #include <hardware/bt_sock.h>
 #ifdef WIPOWER_SUPPORTED
+#include <hardware/vendor.h>
 #include <hardware/wipower.h>
 #endif
 
@@ -68,6 +69,9 @@
 #include "osi/include/osi.h"
 #include "osi/include/wakelock.h"
 #include "stack_manager.h"
+
+/* Test interface includes */
+#include "mca_api.h"
 
 /*******************************************************************************
  *  Static variables
@@ -112,6 +116,9 @@ extern btsdp_interface_t* btif_sdp_get_interface();
 #ifdef WIPOWER_SUPPORTED
 extern wipower_interface_t *get_wipower_interface();
 #endif
+
+/* List all test interface here */
+extern btmcap_test_interface_t* stack_mcap_get_interface();
 
 /*******************************************************************************
  *  Functions
@@ -374,6 +381,9 @@ static const void* get_profile_interface(const char* profile_id) {
   if (is_profile(profile_id, BT_PROFILE_WIPOWER_VENDOR_ID))
     return get_wipower_interface();
 #endif
+
+  if (is_profile(profile_id, BT_TEST_INTERFACE_MCAP_ID))
+    return stack_mcap_get_interface();
 
   return NULL;
 }

@@ -211,5 +211,29 @@ void bta_av_co_audio_delay(tBTA_AV_HNDL hndl, uint16_t delay);
  *
  ******************************************************************************/
 void bta_av_co_audio_update_mtu(tBTA_AV_HNDL hndl, uint16_t mtu);
+/*******************************************************************************
+ **
+ ** Function         bta_av_co_cp_get_flag
+ **
+ ** Description      Get content protection flag
+ **                  AVDT_CP_SCMS_COPY_NEVER
+ **                  AVDT_CP_SCMS_COPY_ONCE
+ **                  AVDT_CP_SCMS_COPY_FREE
+ **
+ ** Returns          The current flag value
+ **
+ ******************************************************************************/
+uint8_t bta_av_co_cp_get_flag(void);
+
+/*******************************************************************************
+ **
+ ** Function         bta_av_co_cp_is_active
+ **
+ ** Description     Get the current configuration of content protection
+ **
+ ** Returns          TRUE if the current streaming has CP, FALSE otherwise
+ **
+ ******************************************************************************/
+bool bta_av_co_cp_is_active(void);
 
 #endif /* BTA_AV_CO_H */

@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ */
+/*
  * Copyright (C) 2016 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -268,7 +272,7 @@ class A2dpCodecs {
   // Initializes all supported codecs.
   // Returns true if at least one Source codec and one Sink codec were
   // initialized, otherwise false.
-  bool init();
+  bool init(bool isMulticastEnabled = false, bool isShoEnabled = false);
 
   // Finds the Source codec that corresponds to the A2DP over-the-air
   // |p_codec_info| information.
@@ -649,6 +653,9 @@ const char* A2DP_CodecIndexStr(btav_a2dp_codec_index_t codec_index);
 bool A2DP_InitCodecConfig(btav_a2dp_codec_index_t codec_index,
                           tAVDT_CFG* p_cfg);
 
+void A2DP_SetOffloadStatus(bool offload_status, char *offload_cap);
+bool A2DP_GetOffloadStatus();
+bool A2DP_IsCodecEnabledInOffload(btav_a2dp_codec_index_t codec_index);
 // Add enum-based flag operators to the btav_a2dp_codec_config_t fields
 #ifndef DEFINE_ENUM_FLAG_OPERATORS
 #define DEFINE_ENUM_FLAG_OPERATORS(bitmask)                                 \

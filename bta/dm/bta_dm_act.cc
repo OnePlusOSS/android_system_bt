@@ -561,7 +561,7 @@ static void bta_dm_disable_timer_cback(void* data) {
     bta_dm_cb.disabling = false;
 
     bta_sys_remove_uuid(UUID_SERVCLASS_PNP_INFORMATION);
-    bta_dm_cb.p_sec_cback(BTA_DM_DISABLE_EVT, NULL);
+    bta_dm_disable_conn_down_timer_cback(NULL);
   }
 }
 
@@ -739,11 +739,14 @@ void bta_dm_remove_device(tBTA_DM_MSG* p_data) {
     /* Take the link down first, and mark the device for removal when
      * disconnected */
     for (int i = 0; i < bta_dm_cb.device_list.count; i++) {
-      if (!bdcmp(bta_dm_cb.device_list.peer_device[i].peer_bdaddr,
-                 other_address)) {
+      if ((!bdcmp(bta_dm_cb.device_list.peer_device[i].peer_bdaddr, other_address))&&
+            ((other_transport && (other_transport == bta_dm_cb.device_list.peer_device[i].transport)) ||
+            !other_transport)) {
         bta_dm_cb.device_list.peer_device[i].conn_state = BTA_DM_UNPAIRING;
+        APPL_TRACE_DEBUG("%s:transport = %d ,other_transport = %d", __func__,
+                       bta_dm_cb.device_list.peer_device[i].transport, other_transport);
         btm_remove_acl(other_address,
-                       bta_dm_cb.device_list.peer_device[i].transport);
+                      bta_dm_cb.device_list.peer_device[i].transport);
         break;
       }
     }
@@ -2463,6 +2466,12 @@ static void bta_dm_pinname_cback(void* p_data) {
 
     /* 1 additional event data fields for this event */
     sec_event.cfm_req.just_works = bta_dm_cb.just_works;
+
+    /* retrieve the loc and rmt caps */
+    sec_event.cfm_req.loc_io_caps = bta_dm_cb.loc_io_caps;
+    sec_event.cfm_req.rmt_io_caps = bta_dm_cb.rmt_io_caps;
+    sec_event.cfm_req.loc_auth_req = bta_dm_cb.loc_auth_req;
+    sec_event.cfm_req.rmt_auth_req = bta_dm_cb.rmt_auth_req;
   } else {
     /* Retrieved saved device class and bd_addr */
     bdcpy(sec_event.pin_req.bd_addr, bta_dm_cb.pin_bd_addr);
@@ -2673,6 +2682,10 @@ static uint8_t bta_dm_sp_cback(tBTM_SP_EVT event, tBTM_SP_EVT_DATA* p_data) {
         if (p_data->cfm_req.bd_name[0] == 0) {
           bta_dm_cb.pin_evt = pin_evt;
           bdcpy(bta_dm_cb.pin_bd_addr, p_data->cfm_req.bd_addr);
+          bta_dm_cb.rmt_io_caps = sec_event.cfm_req.rmt_io_caps;
+          bta_dm_cb.loc_io_caps = sec_event.cfm_req.loc_io_caps;
+          bta_dm_cb.rmt_auth_req = sec_event.cfm_req.rmt_auth_req;
+          bta_dm_cb.loc_auth_req = sec_event.cfm_req.loc_auth_req;
           BTA_COPY_DEVICE_CLASS(bta_dm_cb.pin_dev_class,
                                 p_data->cfm_req.dev_class);
           if ((BTM_ReadRemoteDeviceName(
@@ -3006,12 +3019,15 @@ void bta_dm_acl_change(tBTA_DM_MSG* p_data) {
 
     if (i == bta_dm_cb.device_list.count) {
       if (bta_dm_cb.device_list.count < BTA_DM_NUM_PEER_DEVICE) {
+        /* new acl connection,reset new peer device */
+        memset(&bta_dm_cb.device_list.peer_device[i], 0, sizeof(bta_dm_cb.device_list.peer_device[i]));
         bdcpy(bta_dm_cb.device_list.peer_device[bta_dm_cb.device_list.count]
                   .peer_bdaddr,
               p_bda);
         bta_dm_cb.device_list.peer_device[bta_dm_cb.device_list.count]
             .link_policy = bta_dm_cb.cur_policy;
         bta_dm_cb.device_list.count++;
+        APPL_TRACE_ERROR("%s new acl connetion:count = %d", __func__, bta_dm_cb.device_list.count);
         bta_dm_cb.device_list.peer_device[i].conn_handle =
             p_data->acl_change.handle;
         if (p_data->acl_change.transport == BT_TRANSPORT_LE)
@@ -3062,11 +3078,12 @@ void bta_dm_acl_change(tBTA_DM_MSG* p_data) {
       conn.link_down.is_removed =
           bta_dm_cb.device_list.peer_device[i].remove_dev_pending;
 
-      for (; i < bta_dm_cb.device_list.count; i++) {
+      for (; i < (bta_dm_cb.device_list.count -1); i++) {
         memcpy(&bta_dm_cb.device_list.peer_device[i],
                &bta_dm_cb.device_list.peer_device[i + 1],
                sizeof(bta_dm_cb.device_list.peer_device[i]));
       }
+      memset(&bta_dm_cb.device_list.peer_device[i], 0, sizeof(bta_dm_cb.device_list.peer_device[i]));
       break;
     }
     if (bta_dm_cb.device_list.count) bta_dm_cb.device_list.count--;
@@ -3920,11 +3937,11 @@ bool bta_dm_check_if_only_hd_connected(BD_ADDR peer_addr) {
         !bdcmp(bta_dm_conn_srvcs.conn_srvc[j].peer_bdaddr, peer_addr)) {
       APPL_TRACE_DEBUG("%s: Another profile (id=%d) is connected", __func__,
                        bta_dm_conn_srvcs.conn_srvc[j].id);
-      return FALSE;
+      return false;
     }
   }
 
-  return TRUE;
+  return true;
 }
 
 /*******************************************************************************
@@ -4438,7 +4455,7 @@ void bta_dm_ble_get_energy_info(tBTA_DM_MSG* p_data) {
 }
 
 #ifndef BTA_DM_GATT_CLOSE_DELAY_TOUT
-#define BTA_DM_GATT_CLOSE_DELAY_TOUT 1000
+#define BTA_DM_GATT_CLOSE_DELAY_TOUT 5000
 #endif
 
 /*******************************************************************************
@@ -4639,9 +4656,15 @@ void btm_dm_start_gatt_discovery(BD_ADDR bd_addr) {
     memset(bta_dm_search_cb.pending_close_bda, 0, BD_ADDR_LEN);
     alarm_cancel(bta_dm_search_cb.gatt_close_timer);
     btm_dm_start_disc_gatt_services(bta_dm_search_cb.conn_id);
-  } else
-    BTA_GATTC_Open(bta_dm_search_cb.client_if, bd_addr, true,
-                   BTA_GATT_TRANSPORT_LE);
+  } else {
+    if (BTM_IsAclConnectionUp(bd_addr, BT_TRANSPORT_LE)) {
+      BTA_GATTC_Open(bta_dm_search_cb.client_if, bd_addr, true,
+                     BTA_GATT_TRANSPORT_LE, true);
+    } else {
+      BTA_GATTC_Open(bta_dm_search_cb.client_if, bd_addr, true,
+                     BTA_GATT_TRANSPORT_LE, false);
+    }
+  }
 }
 
 /*******************************************************************************

@@ -21,6 +21,7 @@
 
 #include "bt_target.h"
 #include "bt_types.h"
+#include "device/include/esco_parameters.h"
 #include "hcidefs.h"
 
 #include <base/callback_forward.h>
@@ -222,10 +223,11 @@ extern void btsnd_hcic_rmt_ver_req(
 extern void btsnd_hcic_read_rmt_clk_offset(
     uint16_t handle); /* Remote Clock Offset */
 extern void btsnd_hcic_read_lmp_handle(uint16_t handle); /* Remote LMP Handle */
-
-extern void btsnd_hcic_setup_esco_conn(uint16_t handle, uint32_t tx_bw,
-                                       uint32_t rx_bw, uint16_t max_latency,
-                                       uint16_t voice, uint8_t retrans_effort,
+extern void btsnd_hcic_setup_esco_conn(uint16_t handle,
+                                       uint32_t transmit_bandwidth,
+                                       uint32_t receive_bandwidth,
+                                       uint16_t max_latency, uint16_t voice,
+                                       uint8_t retrans_effort,
                                        uint16_t packet_types);
 #define HCIC_PARAM_SIZE_SETUP_ESCO 17
 
@@ -237,11 +239,10 @@ extern void btsnd_hcic_setup_esco_conn(uint16_t handle, uint32_t tx_bw,
 #define HCI_SETUP_ESCO_RETRAN_EFF_OFF 14
 #define HCI_SETUP_ESCO_PKT_TYPES_OFF 15
 
-extern void btsnd_hcic_accept_esco_conn(BD_ADDR bd_addr, uint32_t tx_bw,
-                                        uint32_t rx_bw, uint16_t max_latency,
-                                        uint16_t content_fmt,
-                                        uint8_t retrans_effort,
-                                        uint16_t packet_types);
+extern void btsnd_hcic_accept_esco_conn(
+    BD_ADDR bd_addr, uint32_t transmit_bandwidth, uint32_t receive_bandwidth,
+    uint16_t max_latency, uint16_t content_fmt, uint8_t retrans_effort,
+    uint16_t packet_types);
 #define HCIC_PARAM_SIZE_ACCEPT_ESCO 21
 
 #define HCI_ACCEPT_ESCO_BDADDR_OFF 0
@@ -484,6 +485,10 @@ extern void btsnd_hcic_delete_stored_key(BD_ADDR bd_addr, bool delete_all_flag);
 #define HCI_DELETE_KEY_ALL_FLAG_OFF 6
 /* Delete Stored Key */
 
+extern void btsnd_hcic_reset(uint8_t local_controller_id); /* Reset */
+
+#define HCIC_PARAM_SIZE_RESET 0 /* Reset */
+
 /* Change Local Name */
 extern void btsnd_hcic_change_name(BD_NAME name);
 
@@ -516,6 +521,9 @@ extern void btsnd_hcic_write_page_tout(
 extern void btsnd_hcic_write_scan_enable(uint8_t flag); /* Write Scan Enable */
 extern void btsnd_hcic_write_pagescan_cfg(
     uint16_t interval, uint16_t window); /* Write Page Scan Activity */
+
+#define HCIC_PARAM_SIZE_ENH_SET_ESCO_CONN 59
+#define HCIC_PARAM_SIZE_ENH_ACC_ESCO_CONN 63
 
 #define HCIC_PARAM_SIZE_WRITE_PAGESCAN_CFG 4
 
@@ -606,6 +614,14 @@ extern void btsnd_hcic_write_inqscan_type(
     uint8_t type); /* Write Inquiry Scan Type */
 extern void btsnd_hcic_write_inquiry_mode(
     uint8_t type); /* Write Inquiry Mode */
+
+/* Enhanced setup SCO connection (CSA2) */
+extern void btsnd_hcic_enhanced_set_up_synchronous_connection(
+    uint16_t conn_handle, enh_esco_params_t* p_parms);
+
+/* Enhanced accept SCO connection request (CSA2) */
+extern void btsnd_hcic_enhanced_accept_synchronous_connection(
+    BD_ADDR bd_addr, enh_esco_params_t* p_parms);
 
 #define HCI_DATA_HANDLE_MASK 0x0FFF
 

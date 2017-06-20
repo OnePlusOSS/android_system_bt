@@ -52,7 +52,6 @@ typedef int (*tAPTX_ENCODER_SIZEOF_PARAMS)(void);
 static tAPTX_ENCODER_INIT aptx_encoder_init_func;
 static tAPTX_ENCODER_ENCODE_STEREO aptx_encoder_encode_stereo_func;
 static tAPTX_ENCODER_SIZEOF_PARAMS aptx_encoder_sizeof_params_func;
-
 // offset
 #if (BTA_AV_CO_CP_SCMS_T == TRUE)
 #define A2DP_APTX_OFFSET (AVDT_MEDIA_OFFSET + 1)
@@ -172,6 +171,10 @@ void a2dp_vendor_aptx_encoder_init(
     A2dpCodecConfig* a2dp_codec_config,
     a2dp_source_read_callback_t read_callback,
     a2dp_source_enqueue_callback_t enqueue_callback) {
+  if (A2DP_GetOffloadStatus()) {
+    LOG_INFO(LOG_TAG,"aptX is running in offload mode");
+    return;
+  }
   memset(&a2dp_aptx_encoder_cb, 0, sizeof(a2dp_aptx_encoder_cb));
 
   a2dp_aptx_encoder_cb.stats.session_start_us = time_get_os_boottime_us();
@@ -363,18 +366,38 @@ static void aptx_update_framing_params(tAPTX_FRAMING_PARAMS* framing_params) {
 }
 
 void a2dp_vendor_aptx_feeding_reset(void) {
+  if (A2DP_GetOffloadStatus()) {
+    LOG_INFO(LOG_TAG,"a2dp_vendor_aptx_feeding_reset:"
+                     "aptX is running in offload mode");
+    return;
+  }
   aptx_init_framing_params(&a2dp_aptx_encoder_cb.framing_params);
 }
 
 void a2dp_vendor_aptx_feeding_flush(void) {
+  if (A2DP_GetOffloadStatus()) {
+    LOG_INFO(LOG_TAG,"a2dp_vendor_aptx_feeding_flush:"
+                     "aptX is running in offload mode");
+    return;
+  }
   aptx_init_framing_params(&a2dp_aptx_encoder_cb.framing_params);
 }
 
 period_ms_t a2dp_vendor_aptx_get_encoder_interval_ms(void) {
+  if (A2DP_GetOffloadStatus()) {
+    LOG_INFO(LOG_TAG,"a2dp_vendor_aptx_get_encoder_interval_ms:"
+                     "aptX is running in offload mode");
+    return 0;
+  }
   return a2dp_aptx_encoder_cb.framing_params.sleep_time_ns / (1000 * 1000);
 }
 
 void a2dp_vendor_aptx_send_frames(uint64_t timestamp_us) {
+  if (A2DP_GetOffloadStatus()) {
+    LOG_INFO(LOG_TAG,"a2dp_vendor_aptx_send_frames"
+                     "aptX is running in offload mode");
+    return;
+  }
   tAPTX_FRAMING_PARAMS* framing_params = &a2dp_aptx_encoder_cb.framing_params;
 
   // Prepare the packet to send

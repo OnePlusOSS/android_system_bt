@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2009-2012 Broadcom Corporation
  *
@@ -45,7 +49,7 @@
 typedef uint32_t btif_sm_state_t;
 typedef uint32_t btif_sm_event_t;
 typedef void* btif_sm_handle_t;
-typedef bool (*btif_sm_handler_t)(btif_sm_event_t event, void* data);
+typedef bool (*btif_sm_handler_t)(btif_sm_event_t event, void* data, int index);
 
 /*****************************************************************************
  *  Functions
@@ -67,7 +71,7 @@ typedef bool (*btif_sm_handler_t)(btif_sm_event_t event, void* data);
  *
  *****************************************************************************/
 btif_sm_handle_t btif_sm_init(const btif_sm_handler_t* p_handlers,
-                              btif_sm_state_t initial_state);
+                              btif_sm_state_t initial_state, int index);
 
 /*****************************************************************************
  *

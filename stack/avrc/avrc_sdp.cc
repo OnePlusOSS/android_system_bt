@@ -195,7 +195,8 @@ uint16_t AVRC_AddRecord(uint16_t service_uuid, const char* p_service_name,
   uint8_t index = 0;
   uint16_t class_list[2];
 
-  AVRC_TRACE_API("%s uuid: %x", __func__, service_uuid);
+  AVRC_TRACE_API("%s uuid: %x version: 0x%04x", __func__,
+    service_uuid, profile_version);
 
   if (service_uuid != UUID_SERVCLASS_AV_REM_CTRL_TARGET &&
       service_uuid != UUID_SERVCLASS_AV_REMOTE_CONTROL)
@@ -227,19 +228,42 @@ uint16_t AVRC_AddRecord(uint16_t service_uuid, const char* p_service_name,
 
   /* additional protocal descriptor, required only for version > 1.3    */
   if ((profile_version > AVRC_REV_1_3) && (browse_supported)) {
-    tSDP_PROTO_LIST_ELEM avrc_add_proto_desc_list;
-    avrc_add_proto_desc_list.num_elems = 2;
-    avrc_add_proto_desc_list.list_elem[0].num_params = 1;
-    avrc_add_proto_desc_list.list_elem[0].protocol_uuid = UUID_PROTOCOL_L2CAP;
-    avrc_add_proto_desc_list.list_elem[0].params[0] = AVCT_BR_PSM;
-    avrc_add_proto_desc_list.list_elem[0].params[1] = 0;
-    avrc_add_proto_desc_list.list_elem[1].num_params = 1;
-    avrc_add_proto_desc_list.list_elem[1].protocol_uuid = UUID_PROTOCOL_AVCTP;
-    avrc_add_proto_desc_list.list_elem[1].params[0] = AVCT_REV_1_4;
-    avrc_add_proto_desc_list.list_elem[1].params[1] = 0;
-
-    result &= SDP_AddAdditionProtoLists(
-        sdp_handle, 1, (tSDP_PROTO_LIST_ELEM*)&avrc_add_proto_desc_list);
+    if (profile_version == AVRC_REV_1_6) {
+      tSDP_PROTO_LIST_ELEM avrc_add_proto_desc_list[AVRC_NUM_PROTO_ELEMS];
+      avrc_add_proto_desc_list[0].num_elems = 2;
+      avrc_add_proto_desc_list[0].list_elem[0].num_params = 1;
+      avrc_add_proto_desc_list[0].list_elem[0].protocol_uuid = UUID_PROTOCOL_L2CAP;
+      avrc_add_proto_desc_list[0].list_elem[0].params[0] = AVCT_BR_PSM;
+      avrc_add_proto_desc_list[0].list_elem[0].params[1] = 0;
+      avrc_add_proto_desc_list[0].list_elem[1].num_params = 1;
+      avrc_add_proto_desc_list[0].list_elem[1].protocol_uuid = UUID_PROTOCOL_AVCTP;
+      avrc_add_proto_desc_list[0].list_elem[1].params[0] = AVCT_REV_1_4;
+      avrc_add_proto_desc_list[0].list_elem[1].params[1] = 0;
+      avrc_add_proto_desc_list[1].num_elems = 2;
+      avrc_add_proto_desc_list[1].list_elem[0].num_params = 1;
+      avrc_add_proto_desc_list[1].list_elem[0].protocol_uuid = UUID_PROTOCOL_L2CAP;
+      avrc_add_proto_desc_list[1].list_elem[0].params[0] = AVCT_CA_PSM;
+      avrc_add_proto_desc_list[1].list_elem[0].params[1] = 0;
+      avrc_add_proto_desc_list[1].list_elem[1].num_params = 0;
+      avrc_add_proto_desc_list[1].list_elem[1].protocol_uuid = UUID_PROTOCOL_OBEX;
+      avrc_add_proto_desc_list[1].list_elem[1].params[0] = 0;
+      avrc_add_proto_desc_list[1].list_elem[1].params[1] = 0;
+      result &= SDP_AddAdditionProtoLists(
+          sdp_handle, AVRC_NUM_PROTO_ELEMS, (tSDP_PROTO_LIST_ELEM *)avrc_add_proto_desc_list);
+    } else {
+        tSDP_PROTO_LIST_ELEM avrc_add_proto_desc_list;
+        avrc_add_proto_desc_list.num_elems = 2;
+        avrc_add_proto_desc_list.list_elem[0].num_params = 1;
+        avrc_add_proto_desc_list.list_elem[0].protocol_uuid = UUID_PROTOCOL_L2CAP;
+        avrc_add_proto_desc_list.list_elem[0].params[0] = AVCT_BR_PSM;
+        avrc_add_proto_desc_list.list_elem[0].params[1] = 0;
+        avrc_add_proto_desc_list.list_elem[1].num_params = 1;
+        avrc_add_proto_desc_list.list_elem[1].protocol_uuid = UUID_PROTOCOL_AVCTP;
+        avrc_add_proto_desc_list.list_elem[1].params[0] = AVCT_REV_1_4;
+        avrc_add_proto_desc_list.list_elem[1].params[1] = 0;
+        result &= SDP_AddAdditionProtoLists(
+            sdp_handle, 1, (tSDP_PROTO_LIST_ELEM*)&avrc_add_proto_desc_list);
+    }
   }
   /* add profile descriptor list   */
   result &= SDP_AddProfileDescriptorList(
@@ -247,6 +271,10 @@ uint16_t AVRC_AddRecord(uint16_t service_uuid, const char* p_service_name,
 
   /* add supported categories */
   p = temp;
+  if (profile_version == AVRC_REV_1_6) {
+      /* Add cover art supported bit */
+      categories |= AVRC_SUPF_TG_PLAYER_COVER_ART;
+  }
   UINT16_TO_BE_STREAM(p, categories);
   result &= SDP_AddAttribute(sdp_handle, ATTR_ID_SUPPORTED_FEATURES,
                              UINT_DESC_TYPE, (uint32_t)2, (uint8_t*)temp);

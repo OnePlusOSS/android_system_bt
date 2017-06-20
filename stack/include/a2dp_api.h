@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2000-2012 Broadcom Corporation
  *
@@ -195,5 +199,8 @@ extern uint8_t A2DP_BitsSet(uint64_t num);
 
 // Initializes the A2DP control block.
 void A2DP_Init(void);
+
+extern void a2dp_set_avdt_sdp_ver(uint16_t avdt_sdp_ver);
+extern uint16_t a2dp_get_avdt_sdp_ver();
 
 #endif  // A2DP_API_H

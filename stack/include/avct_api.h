@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2003-2012 Broadcom Corporation
  *
@@ -42,6 +46,7 @@
 /* PSM for AVCT. */
 #define AVCT_PSM 0x0017
 #define AVCT_BR_PSM 0x001B
+#define AVCT_CA_PSM 0x1021
 
 /* Protocol revision numbers */
 #define AVCT_REV_1_0 0x0100
@@ -121,6 +126,20 @@ typedef struct {
 /*****************************************************************************
  *  External Function Declarations
  ****************************************************************************/
+
+/*******************************************************************************
+ *
+ * Function         AVCT_Init
+ *
+ * Description      This function is called to initialize the control block
+ *                  for this layer.  It must be called before accessing any
+ *                  other API functions for this layer.  It is typically called
+ *                  once during the start up of the stack.
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void AVCT_Init(void);
 
 /*******************************************************************************
  *
@@ -272,5 +291,28 @@ extern uint16_t AVCT_GetPeerMtu(uint8_t handle);
  ******************************************************************************/
 extern uint16_t AVCT_MsgReq(uint8_t handle, uint8_t label, uint8_t cr,
                             BT_HDR* p_msg);
+
+/******************************************************************************
+ *
+ * Function         AVCT_SetTraceLevel
+ *
+ * Description      Sets the trace level for AVCT. If 0xff is passed, the
+ *                  current trace level is returned.
+ *
+ *                  Input Parameters:
+ *                      new_level:  The level to set the AVCT tracing to:
+ *                      0xff-returns the current setting.
+ *                      0-turns off tracing.
+ *                      >= 1-Errors.
+ *                      >= 2-Warnings.
+ *                      >= 3-APIs.
+ *                      >= 4-Events.
+ *                      >= 5-Debug.
+ *
+ * Returns          The new trace level or current trace level if
+ *                  the input parameter is 0xff.
+ *
+ ****************************************************************************/
+uint8_t AVCT_SetTraceLevel(uint8_t new_level);
 
 #endif /* AVCT_API_H */

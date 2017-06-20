@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2004-2012 Broadcom Corporation
  *
@@ -183,8 +187,8 @@ static const uint8_t bta_av_sst_incoming[][BTA_AV_NUM_COLS] = {
                              BTA_AV_INCOMING_SST},
     /* STR_GETCAP_OK_EVT */ {BTA_AV_SAVE_CAPS, BTA_AV_SIGNORE,
                              BTA_AV_INCOMING_SST},
-    /* STR_GETCAP_FAIL_EVT */ {BTA_AV_SIGNORE, BTA_AV_SIGNORE,
-                               BTA_AV_INCOMING_SST},
+    /* STR_GETCAP_FAIL_EVT */ {BTA_AV_OPEN_FAILED, BTA_AV_SIGNORE,
+                               BTA_AV_CLOSING_SST},
     /* STR_OPEN_OK_EVT */ {BTA_AV_STR_OPENED, BTA_AV_SIGNORE, BTA_AV_OPEN_SST},
     /* STR_OPEN_FAIL_EVT */ {BTA_AV_SIGNORE, BTA_AV_SIGNORE,
                              BTA_AV_INCOMING_SST},
@@ -528,7 +532,7 @@ void bta_av_ssm_execute(tBTA_AV_SCB* p_scb, uint16_t event,
     }
   }
 
-  APPL_TRACE_VERBOSE("%s: AV Sevent(0x%x)=0x%x(%s) state=%d(%s)", __func__,
+  APPL_TRACE_VERBOSE("%s(): AV Sevent(0x%x)=0x%x(%s) state=%d(%s)", __func__,
                      p_scb->hndl, event, bta_av_evt_code(event), p_scb->state,
                      bta_av_sst_code(p_scb->state));
 
@@ -536,6 +540,34 @@ void bta_av_ssm_execute(tBTA_AV_SCB* p_scb, uint16_t event,
   state_table = bta_av_sst_tbl[p_scb->state];
 
   event -= BTA_AV_FIRST_SSM_EVT;
+
+  if ((p_scb->state != BTA_AV_OPENING_SST) &&
+      (state_table[event][BTA_AV_SNEXT_STATE] == BTA_AV_OPENING_SST)) {
+    AVDT_UpdateServiceBusyState(true);
+  } else if(AVDT_GetServiceBusyState() == true) {
+    bool keep_busy = true;
+
+    for (xx = 0; xx < BTA_AV_NUM_STRS; xx++) {
+      if (bta_av_cb.p_scb[xx]) {
+        if ((bta_av_cb.p_scb[xx]->state == BTA_AV_OPENING_SST) &&
+            (bta_av_cb.p_scb[xx] != p_scb)) {
+          /* There is other SCB in opening state
+           * keep the service state in progress
+           */
+          APPL_TRACE_VERBOSE("SCB in opening state. Keep Busy");
+          keep_busy = true;
+          break;
+        } else if ((bta_av_cb.p_scb[xx]->state == BTA_AV_OPENING_SST) &&
+                    (bta_av_cb.p_scb[xx] == p_scb) &&
+                    (state_table[event][BTA_AV_SNEXT_STATE] !=
+                     BTA_AV_OPENING_SST)) {
+          keep_busy = false;
+        }
+      }
+      if (keep_busy == false)
+        AVDT_UpdateServiceBusyState(false);
+    }
+  }
 
   /* set next state */
   p_scb->state = state_table[event][BTA_AV_SNEXT_STATE];

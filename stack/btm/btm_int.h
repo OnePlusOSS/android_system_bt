@@ -35,6 +35,8 @@
 #include "rfcdefs.h"
 
 #include "btm_api.h"
+#include "device/include/esco_parameters.h"
+
 #include "btm_ble_int.h"
 #include "btm_int_types.h"
 #include "smp_api.h"
@@ -158,7 +160,7 @@ extern bool btm_is_sco_active(uint16_t handle);
 extern void btm_remove_sco_links(BD_ADDR bda);
 extern bool btm_is_sco_active_by_bdaddr(BD_ADDR remote_bda);
 
-extern tBTM_SCO_TYPE btm_read_def_esco_mode(tBTM_ESCO_PARAMS* p_parms);
+extern void btm_read_def_esco_mode(enh_esco_params_t* p_parms);
 extern uint16_t btm_find_scb_by_handle(uint16_t handle);
 extern void btm_sco_flush_sco_data(uint16_t sco_inx);
 
@@ -213,6 +215,7 @@ extern tBTM_STATUS btm_sec_l2cap_access_req(BD_ADDR bd_addr, uint16_t psm,
 extern tBTM_STATUS btm_sec_mx_access_request(
     BD_ADDR bd_addr, uint16_t psm, bool is_originator, uint32_t mx_proto_id,
     uint32_t mx_chan_id, tBTM_SEC_CALLBACK* p_callback, void* p_ref_data);
+extern  tBTM_STATUS btm_sec_execute_procedure (tBTM_SEC_DEV_REC *p_dev_rec);
 extern void btm_sec_conn_req(uint8_t* bda, uint8_t* dc);
 extern void btm_create_conn_cancel_complete(uint8_t* p);
 

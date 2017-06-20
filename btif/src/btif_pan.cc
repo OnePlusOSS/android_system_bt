@@ -288,7 +288,7 @@ static int tap_if_up(const char* devname, const bt_bdaddr_t* addr) {
 
   // set mac addr
   memset(&ifr, 0, sizeof(ifr));
-  strncpy(ifr.ifr_name, devname, IFNAMSIZ - 1);
+  strlcpy(ifr.ifr_name, devname, IFNAMSIZ);
   err = ioctl(sk, SIOCGIFHWADDR, &ifr);
   if (err < 0) {
     BTIF_TRACE_ERROR(
@@ -298,7 +298,7 @@ static int tap_if_up(const char* devname, const bt_bdaddr_t* addr) {
     return -1;
   }
 
-  strncpy(ifr.ifr_name, devname, IFNAMSIZ - 1);
+  strlcpy(ifr.ifr_name, devname, IFNAMSIZ);
   memcpy(ifr.ifr_hwaddr.sa_data, addr->address, 6);
 
   /* The IEEE has specified that the most significant bit of the most
@@ -326,7 +326,7 @@ static int tap_if_up(const char* devname, const bt_bdaddr_t* addr) {
 
   // bring it up
   memset(&ifr, 0, sizeof(ifr));
-  strncpy(ifr.ifr_name, devname, IF_NAMESIZE - 1);
+  strlcpy(ifr.ifr_name, devname, IF_NAMESIZE);
 
   ifr.ifr_flags |= IFF_UP;
   ifr.ifr_flags |= IFF_MULTICAST;
@@ -352,7 +352,7 @@ static int tap_if_down(const char* devname) {
   if (sk < 0) return -1;
 
   memset(&ifr, 0, sizeof(ifr));
-  strncpy(ifr.ifr_name, devname, IF_NAMESIZE - 1);
+  strlcpy(ifr.ifr_name, devname, IF_NAMESIZE);
 
   ifr.ifr_flags &= ~IFF_UP;
 
@@ -389,7 +389,7 @@ int btpan_tap_open() {
   memset(&ifr, 0, sizeof(ifr));
   ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
 
-  strncpy(ifr.ifr_name, TAP_IF_NAME, IFNAMSIZ);
+  strlcpy(ifr.ifr_name, TAP_IF_NAME, IFNAMSIZ);
 
   /* try to create the device */
   err = ioctl(fd, TUNSETIFF, (void*)&ifr);

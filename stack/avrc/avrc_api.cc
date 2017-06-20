@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2003-2016 Broadcom Corporation
  *
@@ -224,6 +228,27 @@ static uint8_t* avrc_get_data_ptr(BT_HDR* p_pkt) {
 
 /******************************************************************************
  *
+ * Function         avrc_get_packet_type
+ *
+ * Description      Gets a packet type for fragmanted packet.
+ *
+ * Returns          Type of fragmenatation packet.
+ *
+ *****************************************************************************/
+static uint8_t avrc_get_packet_type(BT_HDR *pp_pkt) {
+  BT_HDR      *p_pkt = pp_pkt;
+  uint8_t *p_data;
+  uint8_t pkt_type;
+  p_data  = (uint8_t *)(p_pkt+1) + p_pkt->offset;
+  /* Skip over vendor header (ctype, subunit*, opcode, CO_ID) */
+  p_data += AVRC_VENDOR_HDR_SIZE;
+  pkt_type = *(p_data + 1) & AVRC_PKT_TYPE_MASK;
+
+  return pkt_type;
+}
+
+/******************************************************************************
+ *
  * Function         avrc_copy_packet
  *
  * Description      Copies an AVRC packet to a new buffer. In the new buffer,
@@ -358,6 +383,7 @@ static BT_HDR* avrc_proc_vendor_command(uint8_t handle, uint8_t label,
   uint8_t* p_data;
   uint8_t* p_begin;
   uint8_t pkt_type;
+  uint8_t *p_rsp_data;
   bool abort_frag = false;
   tAVRC_STS status = AVRC_STS_NO_ERROR;
   tAVRC_FRAG_CB* p_fcb;
@@ -426,15 +452,15 @@ static BT_HDR* avrc_proc_vendor_command(uint8_t handle, uint8_t label,
   }
 
   if (status != AVRC_STS_NO_ERROR) {
-    /* use the current GKI buffer to build/send the reject message */
-    p_data = (uint8_t*)(p_pkt + 1) + p_pkt->offset;
-    *p_data++ = AVRC_RSP_REJ;
-    p_data += AVRC_VENDOR_HDR_SIZE; /* pdu */
-    *p_data++ = 0;                  /* pkt_type */
-    UINT16_TO_BE_STREAM(p_data, 1); /* len */
-    *p_data++ = status;             /* error code */
-    p_pkt->len = AVRC_VENDOR_HDR_SIZE + 5;
-    p_rsp = p_pkt;
+    /* check for buffer size before modifing it */
+    p_rsp = avrc_copy_packet(p_pkt, AVRC_OP_REJ_MSG_LEN);
+    p_rsp_data = avrc_get_data_ptr(p_rsp);
+    *p_rsp_data++ = AVRC_RSP_REJ;
+    p_rsp_data += AVRC_VENDOR_HDR_SIZE; /* pdu 1 byte*/
+    *p_rsp_data++ = 0;                  /* pkt_type  1 byte*/
+    UINT16_TO_BE_STREAM(p_rsp_data, 1); /* len 2 byte */
+    *p_rsp_data++ = status;             /* error code 1 byte*/
+    p_rsp->len = AVRC_VENDOR_HDR_SIZE + 5;
   }
 
   return p_rsp;
@@ -755,6 +781,16 @@ static void avrc_msg_cback(uint8_t handle, uint8_t label, uint8_t cr,
 
 #if (AVRC_METADATA_INCLUDED == TRUE)
         uint8_t drop_code = 0;
+        if (p_msg->vendor_len > AVRC_META_CMD_BUF_SIZE) {
+          int packet_type = avrc_get_packet_type(p_pkt);
+          AVRC_TRACE_DEBUG("packet_type %d", packet_type);
+          //single packet size is greater then MTU size, reject it
+          if (packet_type == AVRC_PKT_SINGLE) {
+            AVRC_TRACE_ERROR("Incorrect lenght for single packet");
+            reject = true;
+            break;
+          }
+        }
         if (p_msg->company_id == AVRC_CO_METADATA) {
           /* Validate length for metadata message */
           if (p_pkt->len < (AVRC_VENDOR_HDR_SIZE + AVRC_MIN_META_HDR_SIZE)) {

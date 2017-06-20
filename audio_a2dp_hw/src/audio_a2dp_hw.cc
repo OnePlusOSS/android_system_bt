@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2009-2012 Broadcom Corporation
  *
@@ -449,6 +453,14 @@ static int a2dp_command(struct a2dp_stream_common* common, tA2DP_CTRL_CMD cmd) {
     return -1;
   }
 
+  return 0;
+}
+
+static int check_a2dp_stream_started(struct a2dp_stream_out *out) {
+  if (a2dp_command(&out->common, A2DP_CTRL_CMD_CHECK_STREAM_STARTED) < 0) {
+    INFO("Btif not in stream state");
+    return -1;
+  }
   return 0;
 }
 
@@ -1092,6 +1104,15 @@ static int out_set_parameters(struct audio_stream* stream,
   if (params["A2dpSuspended"].compare("true") == 0) {
     if (out->common.state == AUDIO_A2DP_STATE_STARTED)
       status = suspend_audio_datapath(&out->common, false);
+    else {
+      if (check_a2dp_stream_started(out) == 0)
+        /*Btif and A2dp HAL state can be out of sync
+         *check state of btif and suspend audio.
+         *Happens when remote initiates start.*/
+        status = suspend_audio_datapath(&out->common, false);
+      else
+        out->common.state = AUDIO_A2DP_STATE_SUSPENDED;
+    }
   } else {
     /* Do not start the streaming automatically. If the phone was streaming
      * prior to being suspended, the next out_write shall trigger the

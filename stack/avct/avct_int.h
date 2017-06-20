@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2003-2016 Broadcom Corporation
  *
@@ -94,10 +98,12 @@ typedef struct {
   uint8_t state;      /* The state machine state */
   uint8_t ch_state;   /* L2CAP channel state */
   uint8_t ch_flags;   /* L2CAP configuration flags */
-  BT_HDR* p_tx_msg;  /* Message to be sent - in case the browsing channel is not
+  BT_HDR* p_tx_msg;   /* Message to be sent - in case the browsing channel is not
                         open when MsgReg is called */
-  uint8_t ch_close;  /* CCB index+1, if CCB initiated channel close */
-  BD_ADDR peer_addr; /* BD address of peer */
+  uint8_t ch_close;   /* CCB index+1, if CCB initiated channel close */
+  BD_ADDR peer_addr;  /* BD address of peer */
+  fixed_queue_t *tx_q;/* Transmit data buffer queue       */
+  bool cong;       /* TRUE, if congested */
 } tAVCT_BCB;
 
 #define AVCT_ALOC_LCB 0x01

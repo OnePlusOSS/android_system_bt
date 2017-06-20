@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2009-2012 Broadcom Corporation
  *
@@ -78,6 +82,7 @@
 typedef enum {
   A2DP_CTRL_CMD_NONE,
   A2DP_CTRL_CMD_CHECK_READY,
+  A2DP_CTRL_CMD_CHECK_STREAM_STARTED,
   A2DP_CTRL_CMD_START,
   A2DP_CTRL_CMD_STOP,
   A2DP_CTRL_CMD_SUSPEND,

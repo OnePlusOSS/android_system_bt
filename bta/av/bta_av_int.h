@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2004-2012 Broadcom Corporation
  *
@@ -106,7 +110,10 @@ enum {
 #endif
   BTA_AV_API_START_EVT, /* the following 2 events must be in the same order as
                            the *AP_*EVT */
-  BTA_AV_API_STOP_EVT
+  BTA_AV_API_STOP_EVT,
+  BTA_AV_UPDATE_MAX_AV_CLIENTS_EVT,
+  BTA_AV_ENABLE_MULTICAST_EVT, /* Event for enable and disable multicast */
+  BTA_AV_RC_COLLISSION_DETECTED_EVT
 };
 
 /* events for AV control block state machine */
@@ -118,13 +125,13 @@ enum {
 
 /* events that do not go through state machine */
 #define BTA_AV_FIRST_NSM_EVT BTA_AV_API_ENABLE_EVT
-#define BTA_AV_LAST_NSM_EVT BTA_AV_API_STOP_EVT
+#define BTA_AV_LAST_NSM_EVT BTA_AV_RC_COLLISSION_DETECTED_EVT
 
 /* API events passed to both SSMs (by bta_av_api_to_ssm) */
 #define BTA_AV_FIRST_A2S_API_EVT BTA_AV_API_START_EVT
 #define BTA_AV_FIRST_A2S_SSM_EVT BTA_AV_AP_START_EVT
 
-#define BTA_AV_LAST_EVT BTA_AV_API_STOP_EVT
+#define BTA_AV_LAST_EVT BTA_AV_RC_COLLISSION_DETECTED_EVT
 
 /* maximum number of SEPS in stream discovery results */
 #define BTA_AV_NUM_SEPS 32
@@ -181,7 +188,10 @@ typedef void* (*tBTA_AV_CO_DATAPATH)(const uint8_t* p_codec_info,
                                      uint32_t* p_timestamp);
 typedef void (*tBTA_AV_CO_DELAY)(tBTA_AV_HNDL hndl, uint16_t delay);
 typedef void (*tBTA_AV_CO_UPDATE_MTU)(tBTA_AV_HNDL hndl, uint16_t mtu);
-
+/* SPLITA2DP */
+typedef uint8_t (*tBTA_AV_CO_CP_GET_FLAG)(void);
+typedef bool (*tBTA_AV_CO_CP_IS_ACTIVE)(void);
+/* SPLITA2DP */
 /* the call-out functions for one stream */
 typedef struct {
   tBTA_AV_CO_INIT init;
@@ -195,6 +205,10 @@ typedef struct {
   tBTA_AV_CO_DATAPATH data;
   tBTA_AV_CO_DELAY delay;
   tBTA_AV_CO_UPDATE_MTU update_mtu;
+/* SPLITA2DP */
+  tBTA_AV_CO_CP_GET_FLAG cp_flag;
+  tBTA_AV_CO_CP_IS_ACTIVE cp_is_active;
+/* SPLITA2DP */
 } tBTA_AV_CO_FUNCTS;
 
 /* data type for BTA_AV_API_ENABLE_EVT */
@@ -238,6 +252,20 @@ typedef struct {
   bool flush;
   bool reconfig_stop;  // True if the stream is stopped for reconfiguration
 } tBTA_AV_API_STOP;
+
+/* data type for BTA_AV_ENABLE_MULTICAST_EVT */
+typedef struct
+{
+  BT_HDR hdr;
+  bool is_multicast_enabled;
+} tBTA_AV_ENABLE_MULTICAST;
+
+/* data type for BTA_AV_UPDATE_MAX_AV_CLIENTS_EVTT */
+typedef struct
+{
+   BT_HDR hdr;
+   uint8_t max_clients;
+} tBTA_AV_MAX_CLIENT;
 
 /* data type for BTA_AV_API_DISCONNECT_EVT */
 typedef struct {
@@ -338,6 +366,13 @@ typedef struct {
   uint8_t handle;
 } tBTA_AV_RC_CONN_CHG;
 
+/* data type for BTA_AV_AVRC_COLL_DETECTED_EVT */
+typedef struct {
+  BT_HDR hdr;
+  BD_ADDR peer_addr;
+  uint8_t handle;
+} tBTA_AV_RC_COLLISSION_DETECTED;
+
 /* data type for BTA_AV_CONN_CHG_EVT */
 typedef struct {
   BT_HDR hdr;
@@ -406,6 +441,8 @@ typedef union {
   tBTA_AV_SDP_RES sdp_res;
   tBTA_AV_API_META_RSP api_meta_rsp;
   tBTA_AV_API_STATUS_RSP api_status_rsp;
+  tBTA_AV_ENABLE_MULTICAST multicast_state;
+  tBTA_AV_MAX_CLIENT max_av_clients;
 } tBTA_AV_DATA;
 
 typedef union {
@@ -440,6 +477,8 @@ typedef union {
   0x01 /* Timer is running for incoming L2C connection */
 #define BTA_AV_COLL_API_CALLED \
   0x02 /* API open was called while incoming timer is running */
+#define BTA_AV_COLL_SETCONFIG_IND \
+  0x04 /* SetConfig indication has been called by remote */
 
 /* type for AV stream control block */
 typedef struct {
@@ -499,6 +538,7 @@ typedef struct {
   uint16_t uuid_int; /*intended UUID of Initiator to connect to */
   bool offload_start_pending;
   bool skip_sdp; /* Decides if sdp to be done prior to profile connection */
+  bool offload_supported;
 } tBTA_AV_SCB;
 
 #define BTA_AV_RC_ROLE_MASK 0x10
@@ -565,6 +605,41 @@ typedef struct {
   uint8_t video_streams; /* handle mask of streaming video channels */
 } tBTA_AV_CB;
 
+/* SPLITA2DP */
+typedef struct {
+  uint8_t codec_type;
+  uint8_t transport_type;
+  uint8_t stream_type;
+  uint8_t dev_index;
+  uint8_t max_latency;
+  uint8_t delay_reporting;
+  uint8_t cp_active;
+  uint8_t cp_flag;
+  uint16_t sample_rate;
+  uint16_t acl_hdl;
+  uint16_t l2c_rcid;
+  uint16_t mtu;
+  uint8_t codec_info[20];
+//  tBTA_AV_SCB* p_scb;
+}tBT_VENDOR_A2DP_OFFLOAD;
+
+extern tBT_VENDOR_A2DP_OFFLOAD offload_start;
+
+/* Vendor OFFLOAD VSC */
+#define HCI_VSQC_CONTROLLER_A2DP_OPCODE 0x000A
+
+#define VS_QHCI_READ_A2DP_CFG                 0x01
+#define VS_QHCI_WRITE_SBC_CFG                 0x02
+#define VS_QHCI_WRITE_A2DP_MEDIA_CHANNEL_CFG  0x03
+#define VS_QHCI_START_A2DP_MEDIA              0x04
+#define VS_QHCI_STOP_A2DP_MEDIA               0x05
+#define VS_QHCI_A2DP_WRITE_SUGGESTED_BITRATE  0x06
+#define VS_QHCI_A2DP_TRANSPORT_CONFIGURATION  0x07
+#define VS_QHCI_A2DP_WRITE_SCMS_T_CP          0x08
+#define VS_QHCI_A2DP_SELECTED_CODEC           0x09
+#define VS_QHCI_A2DP_OFFLOAD_START            0x0A
+#define A2DP_TRANSPORT_TYPE_SLIMBUS     0
+/* SPLITA2DP */
 /*****************************************************************************
  *  Global data
  ****************************************************************************/
@@ -606,6 +681,7 @@ extern void bta_av_set_scb_sst_init(tBTA_AV_SCB* p_scb);
 extern bool bta_av_is_scb_init(tBTA_AV_SCB* p_scb);
 extern void bta_av_set_scb_sst_incoming(tBTA_AV_SCB* p_scb);
 extern tBTA_AV_LCB* bta_av_find_lcb(BD_ADDR addr, uint8_t op);
+extern bool bta_av_is_multicast_enabled();
 
 /* main functions */
 extern void bta_av_api_deregister(tBTA_AV_DATA* p_data);
@@ -631,6 +707,7 @@ extern void bta_av_rc_browse_closed(tBTA_AV_DATA* p_data);
 extern void bta_av_rc_disc(uint8_t disc);
 extern void bta_av_conn_chg(tBTA_AV_DATA* p_data);
 extern void bta_av_dereg_comp(tBTA_AV_DATA* p_data);
+extern void bta_av_rc_collission_detected(tBTA_AV_DATA *p_data);
 
 /* sm action functions */
 extern void bta_av_disable(tBTA_AV_CB* p_cb, tBTA_AV_DATA* p_data);
@@ -699,5 +776,6 @@ extern void bta_av_delay_co(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);
 extern void bta_av_open_at_inc(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);
 extern void bta_av_offload_req(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);
 extern void bta_av_offload_rsp(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);
+extern void bta_av_vendor_offload_stop(void);
 
 #endif /* BTA_AV_INT_H */

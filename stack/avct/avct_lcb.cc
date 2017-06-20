@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2003-2012 Broadcom Corporation
  *
@@ -177,7 +181,7 @@ void avct_lcb_event(tAVCT_LCB* p_lcb, uint8_t event, tAVCT_LCB_EVT* p_data) {
   /* execute action functions */
   for (i = 0; i < AVCT_LCB_ACTIONS; i++) {
     action = state_table[event][i];
-    if (action != AVCT_LCB_IGNORE) {
+    if (action < AVCT_LCB_IGNORE) {
       (*avct_lcb_action[action])(p_lcb, p_data);
     } else {
       break;
@@ -212,7 +216,7 @@ void avct_bcb_event(tAVCT_BCB* p_bcb, uint8_t event, tAVCT_LCB_EVT* p_data) {
   /* execute action functions */
   for (i = 0; i < AVCT_LCB_ACTIONS; i++) {
     action = state_table[event][i];
-    if (action != AVCT_LCB_IGNORE) {
+    if (action < AVCT_LCB_IGNORE) {
       (*avct_bcb_action[action])(p_bcb, p_data);
     } else {
       break;
@@ -361,9 +365,11 @@ tAVCT_CCB* avct_lcb_has_pid(tAVCT_LCB* p_lcb, uint16_t pid) {
 
   for (i = 0; i < AVCT_NUM_CONN; i++, p_ccb++) {
     if (p_ccb->allocated && (p_ccb->p_lcb == p_lcb) && (p_ccb->cc.pid == pid)) {
+      AVCT_TRACE_DEBUG("%s(): lcb found", __func__);
       return p_ccb;
     }
   }
+  AVCT_TRACE_WARNING("%s(): lcb not found", __func__);
   return NULL;
 }
 

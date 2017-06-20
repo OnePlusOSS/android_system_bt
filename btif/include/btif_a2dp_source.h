@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2016 The Android Open Source Project
  *  Copyright (C) 2009-2012 Broadcom Corporation
@@ -45,9 +49,15 @@ bool btif_a2dp_source_media_task_is_shutting_down(void);
 // Return true if the A2DP Source module is streaming.
 bool btif_a2dp_source_is_streaming(void);
 
+// Return true if the A2DP remote is trying to start the session
+bool btif_a2dp_source_is_remote_start(void);
+
+// Return true if the A2DP remote is trying to start the session
+void btif_a2dp_source_cancel_remote_start(void);
+
 // Setup the A2DP Source codec, and prepare the encoder.
 // This function should be called prior to starting A2DP streaming.
-void btif_a2dp_source_setup_codec(void);
+bt_status_t btif_a2dp_source_setup_codec(tBTA_AV_HNDL handle);
 
 // Process a request to start the A2DP audio encoding task.
 void btif_a2dp_source_start_audio_req(void);

@@ -6,6 +6,7 @@ btifCommonIncludes = [
     "system/bt/bta/sys",
     "system/bt/bta/dm",
     "system/bt/btcore/include",
+    "system/bt/device/include",
     "system/bt/include",
     "system/bt/stack/include",
     "system/bt/stack/l2cap",
@@ -21,6 +22,7 @@ btifCommonIncludes = [
     "system/bt/embdrv/sbc/decoder/include",
     "system/bt/utils/include",
     "vendor/qcom/opensource/bluetooth/hal/include",
+    "system/libhwbinder/include",
 ]
 
 // libbtif static library for target
@@ -37,6 +39,7 @@ cc_library_static {
         "src/btif_a2dp_control.cc",
         "src/btif_a2dp_sink.cc",
         "src/btif_a2dp_source.cc",
+        "src/btif_a2dp_audio_interface.cc",
         "src/btif_av.cc",
         "src/btif_avrcp_audio_track.cc",
         "src/btif_ble_advertiser.cc",
@@ -91,6 +94,12 @@ cc_library_static {
         "liblog",
         "libz",
         "libtinyxml2",
+        "com.qualcomm.qti.bluetooth_audio@1.0",
+        "libhidlbase",
+        "libhidltransport",
+        "libhwbinder",
+        "libutils",
+//        "libdl",
     ],
     whole_static_libs: [
         "libaudio-a2dp-hw-utils",
@@ -110,6 +119,7 @@ cc_test {
         "liblog",
         "libhardware",
         "libcutils",
+        "libutils",
     ],
     static_libs: [
         "libbtcore",

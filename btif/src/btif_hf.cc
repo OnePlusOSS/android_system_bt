@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2009-2012 Broadcom Corporation
  *
@@ -67,21 +71,12 @@
 #define BTIF_HF_SECURITY (BTA_SEC_AUTHENTICATE | BTA_SEC_ENCRYPT)
 #endif
 
-#if (BTM_WBS_INCLUDED == TRUE)
 #ifndef BTIF_HF_FEATURES
 #define BTIF_HF_FEATURES                                       \
   (BTA_AG_FEAT_3WAY | BTA_AG_FEAT_ECNR | BTA_AG_FEAT_REJECT |  \
    BTA_AG_FEAT_ECS | BTA_AG_FEAT_EXTERR | BTA_AG_FEAT_VREC |   \
    BTA_AG_FEAT_CODEC | BTA_AG_FEAT_HF_IND | BTA_AG_FEAT_ESCO | \
    BTA_AG_FEAT_UNAT)
-#endif
-#else
-#ifndef BTIF_HF_FEATURES
-#define BTIF_HF_FEATURES                                      \
-  (BTA_AG_FEAT_3WAY | BTA_AG_FEAT_ECNR | BTA_AG_FEAT_REJECT | \
-   BTA_AG_FEAT_ECS | BTA_AG_FEAT_EXTERR | BTA_AG_FEAT_VREC | \
-   BTA_AG_FEAT_HF_IND | BTA_AG_FEAT_ESCO | BTA_AG_FEAT_UNAT)
-#endif
 #endif
 
 /* HF features supported at runtime */
@@ -144,6 +139,7 @@ typedef struct _btif_hf_cb {
   struct timespec call_end_timestamp;
   struct timespec connected_timestamp;
   bthf_call_state_t call_setup_state;
+  bthf_audio_state_t audio_state;
 } btif_hf_cb_t;
 
 static btif_hf_cb_t btif_hf_cb[BTIF_HF_NUM_CB];
@@ -326,6 +322,32 @@ static bt_status_t btif_hf_check_if_slc_connected() {
   }
 }
 
+/*******************************************************************************
+ *
+ * Function         btif_hf_check_if_sco_connected
+ *
+ * Description      Returns BT_STATUS_SUCCESS if SCO is up for any HF
+ *
+ * Returns          bt_status_t
+ *
+ ******************************************************************************/
+static bt_status_t btif_hf_check_if_sco_connected() {
+  if (bt_hf_callbacks == NULL) {
+    BTIF_TRACE_WARNING("BTHF: %s(): BTHF not initialized. ", __func__);
+    return BT_STATUS_NOT_READY;
+  } else {
+    for (int i = 0; i < btif_max_hf_clients; i++) {
+      if (btif_hf_cb[i].audio_state == BTHF_AUDIO_STATE_CONNECTED) {
+        BTIF_TRACE_EVENT("BTHF: %s(): sco connected for idx = %d",
+                         __func__, i);
+        return BT_STATUS_SUCCESS;
+      }
+    }
+    BTIF_TRACE_WARNING("BTHF: %s(): No SCO connection up", __func__);
+    return BT_STATUS_NOT_READY;
+  }
+}
+
 /*****************************************************************************
  *   Section name (Group of functions)
  ****************************************************************************/
@@ -431,11 +453,13 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
 
     case BTA_AG_AUDIO_OPEN_EVT:
       hf_idx = idx;
+      btif_hf_cb[idx].audio_state = BTHF_AUDIO_STATE_CONNECTED;
       HAL_CBACK(bt_hf_callbacks, audio_state_cb, BTHF_AUDIO_STATE_CONNECTED,
                 &btif_hf_cb[idx].connected_bda);
       break;
 
     case BTA_AG_AUDIO_CLOSE_EVT:
+      btif_hf_cb[idx].audio_state = BTHF_AUDIO_STATE_DISCONNECTED;
       HAL_CBACK(bt_hf_callbacks, audio_state_cb, BTHF_AUDIO_STATE_DISCONNECTED,
                 &btif_hf_cb[idx].connected_bda);
       break;
@@ -508,7 +532,6 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
                 &btif_hf_cb[idx].connected_bda);
       break;
 
-#if (BTM_WBS_INCLUDED == TRUE)
     case BTA_AG_WBS_EVT:
       BTIF_TRACE_DEBUG(
           "BTA_AG_WBS_EVT Set codec status %d codec %d 1=CVSD 2=MSBC",
@@ -524,7 +547,7 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
                   &btif_hf_cb[idx].connected_bda);
       }
       break;
-#endif
+
     /* Java needs to send OK/ERROR for these commands */
     case BTA_AG_AT_CHLD_EVT:
       HAL_CBACK(bt_hf_callbacks, chld_cmd_cb,
@@ -557,15 +580,14 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
       break;
     case BTA_AG_AT_BAC_EVT:
       BTIF_TRACE_DEBUG("AG Bitmap of peer-codecs %d", p_data->val.num);
-#if (BTM_WBS_INCLUDED == TRUE)
-      /* If the peer supports mSBC and the BTIF prefferred codec is also mSBC,
+      /* If the peer supports mSBC and the BTIF preferred codec is also mSBC,
       then
       we should set the BTA AG Codec to mSBC. This would trigger a +BCS to mSBC
       at the time
       of SCO connection establishment */
       if ((btif_conf_hf_force_wbs == true) &&
           (p_data->val.num & BTA_AG_CODEC_MSBC)) {
-        BTIF_TRACE_EVENT("%s btif_hf override-Preferred Codec to MSBC",
+        BTIF_TRACE_EVENT("%s: btif_hf override-Preferred Codec to MSBC",
                          __func__);
         BTA_AgSetCodec(btif_hf_cb[idx].handle, BTA_AG_CODEC_MSBC);
       } else {
@@ -573,15 +595,15 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
                          __func__);
         BTA_AgSetCodec(btif_hf_cb[idx].handle, BTA_AG_CODEC_CVSD);
       }
-#endif
       break;
     case BTA_AG_AT_BCS_EVT:
-      BTIF_TRACE_DEBUG("AG final seleded codec is %d 1=CVSD 2=MSBC",
-                       p_data->val.num);
-      /*  no BTHF_WBS_NONE case, becuase HF1.6 supported device can send BCS */
+      BTIF_TRACE_DEBUG("%s: AG final selected codec is 0x%02x 1=CVSD 2=MSBC",
+                       __func__, p_data->val.num);
+      /* No BTHF_WBS_NONE case, because HF1.6 supported device can send BCS */
+      /* Only CVSD is considered narrow band speech */
       HAL_CBACK(
           bt_hf_callbacks, wbs_cb,
-          (p_data->val.num == BTA_AG_CODEC_MSBC) ? BTHF_WBS_YES : BTHF_WBS_NO,
+          (p_data->val.num == BTA_AG_CODEC_CVSD) ? BTHF_WBS_NO : BTHF_WBS_YES,
           &btif_hf_cb[idx].connected_bda);
       break;
 
@@ -1309,7 +1331,7 @@ static bt_status_t phone_state_change(int num_active, int num_held,
     ag_res.audio_handle = BTA_AG_HANDLE_SCO_NO_CHANGE;
     /* Addition call setup with the Active call
     ** CIND response should have been updated.
-    ** just open SCO conenction.
+    ** just open SCO connection.
     */
     if (call_setup_state != BTHF_CALL_STATE_IDLE)
       res = BTA_AG_MULTI_CALL_RES;
@@ -1466,6 +1488,40 @@ bool btif_hf_is_call_idle(void) {
         ((btif_hf_cb[i].num_held + btif_hf_cb[i].num_active) > 0))
       return false;
   }
+
+  return true;
+}
+
+/*******************************************************************************
+*
+ * Function         btif_hf_is_call_vr_idle
+ *
+ * Description      returns true if no call is in progress
+ *
+ * Returns          bool
+ *
+ ******************************************************************************/
+bool btif_hf_is_call_vr_idle() {
+  int i, j = 1;
+
+  if (bt_hf_callbacks == NULL)
+    return true;
+  for (i = 0; i < btif_max_hf_clients; i++) {
+    BTIF_TRACE_EVENT("%s: call_setup_state: %d for handle: %d",
+                     __func__, btif_hf_cb[i].call_setup_state,
+                     btif_hf_cb[i].handle);
+    BTIF_TRACE_EVENT("num_held: %d, num_active: %d for handle: %d",
+                     btif_hf_cb[i].num_held, btif_hf_cb[i].num_active,
+                     btif_hf_cb[i].handle);
+    j &= ((btif_hf_cb[i].call_setup_state == BTHF_CALL_STATE_IDLE) &&
+            ((btif_hf_cb[i].num_held + btif_hf_cb[i].num_active) == 0));
+  }
+
+  if (j && (btif_hf_check_if_sco_connected() != BT_STATUS_SUCCESS)) {
+    BTIF_TRACE_EVENT("%s: call state idle and no sco connected.", __func__);
+    return true;
+  } else
+    return false;
 
   return true;
 }

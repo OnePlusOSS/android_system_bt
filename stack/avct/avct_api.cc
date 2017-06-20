@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2003-2016 Broadcom Corporation
  *
@@ -416,8 +420,13 @@ uint16_t AVCT_MsgReq(uint8_t handle, uint8_t label, uint8_t cr, BT_HDR* p_msg) {
         osi_free(p_msg);
       } else {
         p_ccb->p_bcb = avct_bcb_by_lcb(p_ccb->p_lcb);
-        avct_bcb_event(p_ccb->p_bcb, AVCT_LCB_UL_MSG_EVT,
-                       (tAVCT_LCB_EVT*)&ul_msg);
+        if (p_ccb->p_bcb)
+          avct_bcb_event(p_ccb->p_bcb, AVCT_LCB_UL_MSG_EVT,
+                         (tAVCT_LCB_EVT *) &ul_msg);
+        else {
+          result = AVCT_BAD_HANDLE;
+          osi_free(p_msg);
+        }
       }
     }
     /* send msg event to lcb */
@@ -427,4 +436,32 @@ uint16_t AVCT_MsgReq(uint8_t handle, uint8_t label, uint8_t cr, BT_HDR* p_msg) {
     }
   }
   return result;
+}
+
+/******************************************************************************
+ *
+ * Function         AVCT_SetTraceLevel
+ *
+ * Description      Sets the trace level for AVCT. If 0xff is passed, the
+ *                  current trace level is returned.
+ *
+ *                  Input Parameters:
+ *                      new_level:  The level to set the AVCT tracing to:
+ *                      0xff-returns the current setting.
+ *                      0-turns off tracing.
+ *                      >= 1-Errors.
+ *                      >= 2-Warnings.
+ *                      >= 3-APIs.
+ *                      >= 4-Events.
+ *                      >= 5-Debug.
+ *
+ * Returns          The new trace level or current trace level if
+ *                  the input parameter is 0xff.
+ *
+ ******************************************************************************/
+uint8_t AVCT_SetTraceLevel (uint8_t new_level) {
+  if (new_level != 0xFF)
+    avct_cb.trace_level = new_level;
+
+  return (avct_cb.trace_level);
 }

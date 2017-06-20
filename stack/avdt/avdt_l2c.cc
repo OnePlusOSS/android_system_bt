@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2002-2012 Broadcom Corporation
  *
@@ -174,9 +178,16 @@ void avdt_l2c_connect_ind_cback(BD_ADDR bd_addr, uint16_t lcid,
   tL2CAP_CFG_INFO cfg;
   tBTM_STATUS rc;
 
-  /* do we already have a control channel for this peer? */
-  p_ccb = avdt_ccb_by_bd(bd_addr);
-  if (p_ccb == NULL) {
+  /* Check if outgoing connection is in progress
+   * if yes, reject incoming connection at L2CAP
+   * level itself.
+   */
+  if (AVDT_GetServiceBusyState() == true) {
+    AVDT_TRACE_WARNING("connect_ind: outgoing conn in progress: Reject incoming conn");
+    result = L2CAP_CONN_NO_RESOURCES;
+  }
+   /* do we already have a control channel for this peer? */
+  else if ((p_ccb = avdt_ccb_by_bd(bd_addr)) != NULL) {
     /* no, allocate ccb */
     p_ccb = avdt_ccb_alloc(bd_addr);
     if (p_ccb == NULL) {

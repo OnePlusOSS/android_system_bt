@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2016 The Android Open Source Project
  *  Copyright (C) 2009-2012 Broadcom Corporation
@@ -25,7 +29,7 @@
 #include "bta_av_api.h"
 
 // Process 'idle' request from the BTIF state machine during initialization.
-void btif_a2dp_on_idle(void);
+void btif_a2dp_on_idle(int index);
 
 // Process 'start' request from the BTIF state machine to prepare for A2DP
 // streaming.
@@ -33,7 +37,8 @@ void btif_a2dp_on_idle(void);
 // |pending_start| should be set to true if the BTIF state machine is in
 // 'pending start' state.
 // Returns true if an ACK for the local command was sent, otherwise false.
-bool btif_a2dp_on_started(tBTA_AV_START* p_av_start, bool pending_start);
+bool btif_a2dp_on_started(tBTA_AV_START* p_av_start, bool pending_start,
+                          tBTA_AV_HNDL hdl);
 
 // Process 'stop' request from the BTIF state machine to stop A2DP streaming.
 // |p_av_suspend| is the data associated with the request - see
@@ -57,5 +62,8 @@ void btif_a2dp_on_offload_started(tBTA_AV_STATUS status);
 // |fd| is the file descriptor to use for writing the ASCII formatted
 // information.
 void btif_debug_a2dp_dump(int fd);
+
+// Initialize sink variables
+void btif_a2dp_sink_on_init(void);
 
 #endif /* BTIF_A2DP_H */

@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2004-2012 Broadcom Corporation
  *
@@ -34,6 +38,7 @@
 
 #include "bta_av_co.h"
 #include "bta_av_int.h"
+#include "btm_int.h"
 #include "btif/include/btif_av_co.h"
 #include "l2c_api.h"
 #include "l2cdefs.h"
@@ -131,7 +136,7 @@ static const uint8_t bta_av_st_init[][BTA_AV_NUM_COLS] = {
     /* API_VENDOR_CMD_EVT */ {BTA_AV_IGNORE, BTA_AV_INIT_ST},
     /* API_VENDOR_RSP_EVT */ {BTA_AV_IGNORE, BTA_AV_INIT_ST},
     /* API_META_RSP_EVT */ {BTA_AV_RC_FREE_RSP, BTA_AV_INIT_ST},
-    /* API_RC_CLOSE_EVT */ {BTA_AV_IGNORE, BTA_AV_INIT_ST},
+    /* API_RC_CLOSE_EVT */ {BTA_AV_CLOSE_EVT, BTA_AV_INIT_ST},
     /* AVRC_OPEN_EVT */ {BTA_AV_RC_OPENED, BTA_AV_OPEN_ST},
     /* AVRC_MSG_EVT */ {BTA_AV_RC_FREE_BROWSE_MSG, BTA_AV_INIT_ST},
     /* AVRC_NONE_EVT */ {BTA_AV_IGNORE, BTA_AV_INIT_ST},
@@ -171,6 +176,9 @@ static void bta_av_sco_chg_cback(tBTA_SYS_CONN_STATUS status, uint8_t id,
 static void bta_av_sys_rs_cback(tBTA_SYS_CONN_STATUS status, uint8_t id,
                                 uint8_t app_id, BD_ADDR peer_addr);
 
+static void bta_av_api_enable_multicast(tBTA_AV_DATA *p_data);
+static void bta_av_api_update_max_av_clients(tBTA_AV_DATA * p_data);
+
 /* action functions */
 const tBTA_AV_NSM_ACT bta_av_nsm_act[] = {
     bta_av_api_enable,       /* BTA_AV_API_ENABLE_EVT */
@@ -191,6 +199,9 @@ const tBTA_AV_NSM_ACT bta_av_nsm_act[] = {
 #endif
     bta_av_api_to_ssm, /* BTA_AV_API_START_EVT */
     bta_av_api_to_ssm, /* BTA_AV_API_STOP_EVT */
+    bta_av_api_update_max_av_clients,
+    bta_av_api_enable_multicast,    /* BTA_AV_ENABLE_MULTICAST_EVT */
+    bta_av_rc_collission_detected, /* BTA_AV_RC_COLLISSION_DETECTED_EVT */
 };
 
 /*****************************************************************************
@@ -199,9 +210,10 @@ const tBTA_AV_NSM_ACT bta_av_nsm_act[] = {
 
 /* AV control block */
 tBTA_AV_CB bta_av_cb;
-
+tBT_VENDOR_A2DP_OFFLOAD offload_start;
 static const char* bta_av_st_code(uint8_t state);
 
+static bool is_multicast_enabled = false;
 /*******************************************************************************
  *
  * Function         bta_av_api_enable
@@ -334,6 +346,7 @@ static tBTA_AV_SCB* bta_av_alloc_scb(tBTA_AV_CHNL chnl) {
         p_ret->a2dp_list = list_new(NULL);
         p_ret->avrc_ct_timer = alarm_new("bta_av.avrc_ct_timer");
         bta_av_cb.p_scb[xx] = p_ret;
+        APPL_TRACE_EVENT("AV: Alloc success, handle is =%d", p_ret->hndl);
         break;
       }
     }
@@ -429,7 +442,8 @@ static void bta_av_api_register(tBTA_AV_DATA* p_data) {
     p_bta_av_cfg = (tBTA_AV_CFG*)&bta_av_cfg;
   }
 
-  APPL_TRACE_DEBUG("%s: profile: 0x%x", __func__, profile_initialized);
+  APPL_TRACE_DEBUG("%s(): profile: 0x%x, channle: 0x%x", __func__,
+                   profile_initialized, registr.chnl);
   if (p_bta_av_cfg == NULL) {
     APPL_TRACE_ERROR("AV configuration is null!");
     return;
@@ -535,6 +549,7 @@ static void bta_av_api_register(tBTA_AV_DATA* p_data) {
     cs.p_ctrl_cback = bta_av_dt_cback[p_scb->hdi];
     if (registr.chnl == BTA_AV_CHNL_AUDIO) {
       /* set up the audio stream control block */
+      APPL_TRACE_EVENT("AV: set up the audio stream control block ");
       p_scb->p_act_tbl = (const tBTA_AV_ACT*)bta_av_a2dp_action;
       p_scb->p_cos = &bta_av_a2dp_cos;
       p_scb->media_type = AVDT_MEDIA_TYPE_AUDIO;
@@ -618,7 +633,7 @@ static void bta_av_api_register(tBTA_AV_DATA* p_data) {
         }
         /* start listening when A2DP is registered */
         if (bta_av_cb.features & BTA_AV_FEAT_RCTG)
-          bta_av_rc_create(&bta_av_cb, AVCT_ACP, 0, BTA_AV_NUM_LINKS + 1);
+          bta_av_rc_create(&bta_av_cb, AVCT_ACP, p_scb->hdi, BTA_AV_NUM_LINKS + 1);
 
         /* if the AV and AVK are both supported, it cannot support the CT role
          */
@@ -714,7 +729,10 @@ static void bta_av_ci_data(tBTA_AV_DATA* p_data) {
   for (i = 0; i < BTA_AV_NUM_STRS; i++) {
     p_scb = bta_av_cb.p_scb[i];
 
-    if (p_scb && p_scb->chnl == chnl) {
+    /* Check if the Stream is in Started state before sending data
+     * in Dual Handoff mode, get SCB where START is done.
+     */
+    if (p_scb && (p_scb->chnl == chnl) && (p_scb->started)) {
       bta_av_ssm_execute(p_scb, BTA_AV_SRC_DATA_READY_EVT, p_data);
     }
   }
@@ -735,6 +753,26 @@ static void bta_av_rpc_conn(UNUSED_ATTR tBTA_AV_DATA* p_data) {}
 
 /*******************************************************************************
  *
+ * Function         bta_av_multiple_streams_started
+ *
+ * Description      Are multiple streams started (multicast)
+ *
+ * Returns          bool
+ *
+ ******************************************************************************/
+bool bta_av_multiple_streams_started(void)
+{
+  int xx, stream_count = 0;
+
+  for (xx = 0; xx < BTA_AV_NUM_STRS; xx++)
+    if ((bta_av_cb.p_scb[xx] != NULL) && bta_av_cb.p_scb[xx]->started == true)
+            stream_count++;
+
+  return (stream_count > 1);
+}
+
+/*******************************************************************************
+ *
  * Function         bta_av_api_to_ssm
  *
  * Description      forward the API request to stream state machine
@@ -748,9 +786,68 @@ static void bta_av_api_to_ssm(tBTA_AV_DATA* p_data) {
   uint16_t event =
       p_data->hdr.event - BTA_AV_FIRST_A2S_API_EVT + BTA_AV_FIRST_A2S_SSM_EVT;
 
-  for (xx = 0; xx < BTA_AV_NUM_STRS; xx++) {
-    bta_av_ssm_execute(bta_av_cb.p_scb[xx], event, p_data);
+  /* Multicast: Corner case handling for multicast state getting
+   * updated for ACL connected during the stream start where both
+   * streams are not yet started. We need to take care of this
+   * during suspend to ensure we suspend both streams.
+   */
+  if ((is_multicast_enabled == TRUE) ||
+      ((event == BTA_AV_AP_STOP_EVT) && (bta_av_multiple_streams_started() == TRUE))) {
+    /* Send START request to all Open Stream connections.*/
+    for (xx=0; xx < BTA_AV_NUM_STRS; xx++)
+      bta_av_ssm_execute(bta_av_cb.p_scb[xx], event, p_data);
+  } else {
+    /* In Dual A2dp Handoff, process this fucntion on specific handles.*/
+    APPL_TRACE_DEBUG("bta_av_api_to_ssm: on Handle 0x%x",p_data->hdr.layer_specific);
+    bta_av_ssm_execute(bta_av_hndl_to_scb(p_data->hdr.layer_specific), event, p_data);
   }
+}
+
+/*******************************************************************************
+ *
+ * Function         bta_av_api_enable_multicast
+ *
+ * Description      Enable/Disable Avdtp multicast
+ *
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+static void bta_av_api_enable_multicast(tBTA_AV_DATA *p_data)
+{
+  is_multicast_enabled = p_data->multicast_state.is_multicast_enabled;
+  APPL_TRACE_DEBUG("%s(): is_multicast_enabled :%d", __func__,
+                   is_multicast_enabled);
+}
+
+/*******************************************************************************
+ *
+ * Function         bta_av_is_multicast_enabled
+ *
+ * Description      return status of Avdtp multicast
+ *
+ * Returns          bool
+ *
+ ******************************************************************************/
+bool bta_av_is_multicast_enabled()
+{
+  return is_multicast_enabled;
+}
+
+/*******************************************************************************
+ *
+ * Function         bta_av_api_update_max_av_client
+ *
+ * Description      Update max simultaneous AV connections supported
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+static void bta_av_api_update_max_av_clients(tBTA_AV_DATA *p_data)
+{
+  int bta_av_max_clients = p_data->max_av_clients.max_clients;
+  APPL_TRACE_DEBUG("bta_av_max_clients:%d",bta_av_max_clients);
+  AVDT_UpdateMaxAvClients(bta_av_max_clients);
 }
 
 /*******************************************************************************
@@ -768,6 +865,8 @@ bool bta_av_chk_start(tBTA_AV_SCB* p_scb) {
   tBTA_AV_SCB* p_scbi;
   int i;
 
+  APPL_TRACE_DEBUG("%s(): Audio open count: 0x%x", __func__,
+                   bta_av_cb.audio_open_cnt);
   if (p_scb->chnl == BTA_AV_CHNL_AUDIO) {
     if ((bta_av_cb.audio_open_cnt >= 2) &&
         ((0 ==
@@ -781,7 +880,13 @@ bool bta_av_chk_start(tBTA_AV_SCB* p_scb) {
       for (i = 0; i < BTA_AV_NUM_STRS; i++) {
         p_scbi = bta_av_cb.p_scb[i];
         if (p_scbi && p_scbi->chnl == BTA_AV_CHNL_AUDIO && p_scbi->co_started) {
-          start = true;
+          if (is_multicast_enabled == TRUE)
+            start = true;
+          else {
+            start = false;
+            APPL_TRACE_DEBUG("%s: Already playing", __func__);
+            break;
+          }
           /* may need to update the flush timeout of this already started stream
            */
           if (p_scbi->co_started != bta_av_cb.audio_open_cnt) {
@@ -887,10 +992,17 @@ static void bta_av_sys_rs_cback(UNUSED_ATTR tBTA_SYS_CONN_STATUS status,
       APPL_TRACE_DEBUG("bta_av_sys_rs_cback: rs_idx(%d), hndl:x%x q_tag: %d",
                        bta_av_cb.rs_idx, p_scb->hndl, p_scb->q_tag);
 
+      /* Multicast:
+       * As per Multicast feature implementation, fallback
+       * happens to soft hand-off when DUT is in scatternet
+       * scenario. Hence, don't fail the connection if
+       * role switch fails because of remote disallowing.
+       * Set switch_res to BTA_AV_RS_DONE on failure.
+       */
       if (HCI_SUCCESS == app_id || HCI_ERR_NO_CONNECTION == app_id)
         p_scb->q_info.open.switch_res = BTA_AV_RS_OK;
       else
-        p_scb->q_info.open.switch_res = BTA_AV_RS_FAIL;
+        p_scb->q_info.open.switch_res = BTA_AV_RS_DONE;
 
       /* Continue av open process */
       bta_av_do_disc_a2dp(p_scb, (tBTA_AV_DATA*)&(p_scb->q_info.open));
@@ -967,6 +1079,7 @@ bool bta_av_switch_if_needed(tBTA_AV_SCB* p_scb) {
   bool needed = false;
   tBTA_AV_SCB* p_scbi;
   int i;
+  tBTM_STATUS ret;
   uint8_t mask;
 
   for (i = 0; i < BTA_AV_NUM_STRS; i++) {
@@ -983,8 +1096,13 @@ bool bta_av_switch_if_needed(tBTA_AV_SCB* p_scb) {
         if (bta_av_cb.features & BTA_AV_FEAT_MASTER)
           bta_sys_clear_policy(BTA_ID_AV, HCI_ENABLE_MASTER_SLAVE_SWITCH,
                                p_scbi->peer_addr);
-        if (BTM_CMD_STARTED !=
-            BTM_SwitchRole(p_scbi->peer_addr, BTM_ROLE_MASTER, NULL)) {
+        ret = BTM_SwitchRole(p_scbi->peer_addr, BTM_ROLE_MASTER, NULL);
+        if ((ret == BTM_REPEATED_ATTEMPTS) ||
+            ((ret == BTM_NO_RESOURCES) &&
+              btm_is_sco_active_by_bdaddr(p_scbi->peer_addr)))
+          return false;
+
+        if (BTM_CMD_STARTED != ret) {
           /* can not switch role on SCBI
            * start the timer on SCB - because this function is ONLY called when
            * SCB gets API_OPEN */
@@ -1014,6 +1132,7 @@ bool bta_av_switch_if_needed(tBTA_AV_SCB* p_scb) {
 bool bta_av_link_role_ok(tBTA_AV_SCB* p_scb, uint8_t bits) {
   uint8_t role;
   bool is_ok = true;
+  tBTM_STATUS ret;
 
   if (BTM_GetRole(p_scb->peer_addr, &role) == BTM_SUCCESS) {
     LOG_INFO(LOG_TAG, "%s hndl:x%x role:%d conn_audio:x%x bits:%d features:x%x",
@@ -1025,9 +1144,17 @@ bool bta_av_link_role_ok(tBTA_AV_SCB* p_scb, uint8_t bits) {
       if (bta_av_cb.features & BTA_AV_FEAT_MASTER)
         bta_sys_clear_policy(BTA_ID_AV, HCI_ENABLE_MASTER_SLAVE_SWITCH,
                              p_scb->peer_addr);
+      ret = BTM_SwitchRole(p_scb->peer_addr, BTM_ROLE_MASTER, NULL);
+      /* We have already reached maximum attempts,
+       * If we try again it will anyways fail
+       * return from here
+       */
+      if ((ret == BTM_REPEATED_ATTEMPTS) ||
+          ((ret == BTM_NO_RESOURCES) &&
+           btm_is_sco_active_by_bdaddr(p_scb->peer_addr)))
+        return true;
 
-      if (BTM_CMD_STARTED !=
-          BTM_SwitchRole(p_scb->peer_addr, BTM_ROLE_MASTER, NULL)) {
+      if (BTM_CMD_STARTED != ret) {
         /* can not switch role on SCB - start the timer on SCB */
       }
       is_ok = false;
@@ -1342,6 +1469,8 @@ const char* bta_av_evt_code(uint16_t evt_code) {
       return "API_START";
     case BTA_AV_API_STOP_EVT:
       return "API_STOP";
+    case BTA_AV_ENABLE_MULTICAST_EVT:
+      return "MULTICAST_ENABLE";
     default:
       return "unknown";
   }

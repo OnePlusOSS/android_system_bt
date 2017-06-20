@@ -140,6 +140,10 @@ void a2dp_sbc_encoder_init(const tA2DP_ENCODER_INIT_PEER_PARAMS* p_peer_params,
                            A2dpCodecConfig* a2dp_codec_config,
                            a2dp_source_read_callback_t read_callback,
                            a2dp_source_enqueue_callback_t enqueue_callback) {
+  if (A2DP_GetOffloadStatus()) {
+    LOG_INFO(LOG_TAG,"sbc is running in offload mode");
+    return;
+  }
   memset(&a2dp_sbc_encoder_cb, 0, sizeof(a2dp_sbc_encoder_cb));
 
   a2dp_sbc_encoder_cb.stats.session_start_us = time_get_os_boottime_us();
@@ -379,6 +383,11 @@ void a2dp_sbc_encoder_cleanup(void) {
 
 void a2dp_sbc_feeding_reset(void) {
   /* By default, just clear the entire state */
+  if (A2DP_GetOffloadStatus()) {
+    LOG_INFO(LOG_TAG,"a2dp_sbc_feeding_reset:"
+                     "sbc is running in offload mode");
+    return;
+  }
   memset(&a2dp_sbc_encoder_cb.feeding_state, 0,
          sizeof(a2dp_sbc_encoder_cb.feeding_state));
 
@@ -394,11 +403,21 @@ void a2dp_sbc_feeding_reset(void) {
 }
 
 void a2dp_sbc_feeding_flush(void) {
+  if (A2DP_GetOffloadStatus()) {
+    LOG_INFO(LOG_TAG,"a2dp_sbc_feeding_flush:"
+                     "sbc is running in offload mode");
+    return;
+  }
   a2dp_sbc_encoder_cb.feeding_state.counter = 0;
   a2dp_sbc_encoder_cb.feeding_state.aa_feed_residue = 0;
 }
 
 period_ms_t a2dp_sbc_get_encoder_interval_ms(void) {
+  if (A2DP_GetOffloadStatus()) {
+    LOG_INFO(LOG_TAG,"a2dp_sbc_get_encoder_interval_ms:"
+                     "sbc is running in offload mode");
+    return 0;
+  }
   return A2DP_SBC_ENCODER_INTERVAL_MS;
 }
 
@@ -406,6 +425,11 @@ void a2dp_sbc_send_frames(uint64_t timestamp_us) {
   uint8_t nb_frame = 0;
   uint8_t nb_iterations = 0;
 
+  if (A2DP_GetOffloadStatus()) {
+    LOG_INFO(LOG_TAG,"a2dp_sbc_send_frames:"
+                     "sbc is running in offload mode");
+    return;
+  }
   a2dp_sbc_get_num_frame_iteration(&nb_iterations, &nb_frame, timestamp_us);
   LOG_VERBOSE(LOG_TAG, "%s: Sending %d frames per iteration, %d iterations",
               __func__, nb_frame, nb_iterations);

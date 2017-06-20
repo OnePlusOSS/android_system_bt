@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2002-2012 Broadcom Corporation
  *
@@ -115,6 +119,19 @@ static void a2dp_sdp_cback(uint16_t status) {
   }
 
   return;
+}
+
+/*******************************************************************************
+ *
+ * Function         a2dp_get_avdt_sdp_ver
+ *
+ * Description      This function fetches current version of AVDT.
+ *
+ * Returns          Current version of AVDT
+ *
+ *******************************************************************************/
+uint16_t a2dp_get_avdt_sdp_ver() {
+    return a2dp_cb.avdt_sdp_ver;
 }
 
 /*******************************************************************************
@@ -298,7 +315,7 @@ tA2DP_STATUS A2DP_FindService(uint16_t service_uuid, BD_ADDR bd_addr,
                                p_db->num_attr, p_db->p_attrs);
 
   if (result == true) {
-    /* store service_uuid */
+    /* store service_uuid and discovery db pointer */
     a2dp_cb.find.service_uuid = service_uuid;
     a2dp_cb.find.p_cback = p_cback;
 

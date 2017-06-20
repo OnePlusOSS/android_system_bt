@@ -185,6 +185,7 @@ static int uhid_read_event(btif_hh_device_t* p_dev) {
     return -errno;
   }
 
+  APPL_TRACE_DEBUG("%s: Event type = %d", __func__, ev.type);
   switch (ev.type) {
     case UHID_START:
       APPL_TRACE_DEBUG("UHID_START from uhid-dev\n");
@@ -653,7 +654,7 @@ void bta_hh_co_send_hid_info(btif_hh_device_t* p_dev, const char* dev_name,
   // Create and send hid descriptor to kernel
   memset(&ev, 0, sizeof(ev));
   ev.type = UHID_CREATE;
-  strncpy((char*)ev.u.create.name, dev_name, sizeof(ev.u.create.name) - 1);
+  strlcpy((char*)ev.u.create.name, dev_name, sizeof(ev.u.create.name));
   snprintf((char*)ev.u.create.uniq, sizeof(ev.u.create.uniq),
            "%2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X", p_dev->bd_addr.address[5],
            p_dev->bd_addr.address[4], p_dev->bd_addr.address[3],
@@ -695,7 +696,7 @@ void bta_hh_co_send_hid_info(btif_hh_device_t* p_dev, const char* dev_name,
 void bta_hh_co_set_rpt_rsp(uint8_t dev_handle, uint8_t status) {
   btif_hh_device_t* p_dev;
 
-  APPL_TRACE_VERBOSE("%s: dev_handle = %d, status = %d", __func__, dev_handle,
+  APPL_TRACE_DEBUG("%s: dev_handle = %d, status = %d", __func__, dev_handle,
                      status);
 
   p_dev = btif_hh_find_connected_dev_by_handle(dev_handle);
@@ -706,15 +707,26 @@ void bta_hh_co_set_rpt_rsp(uint8_t dev_handle, uint8_t status) {
   }
   if (!p_dev->set_rpt_id_queue || p_dev->fd < 0) return;
 
+  if (fixed_queue_is_empty(p_dev->set_rpt_id_queue)) {
+      APPL_TRACE_WARNING("%s: Queue is empty", __func__);
+      return;
+  }
+
   // Send the HID report to the kernel.
   struct uhid_event ev;
   uint32_t* set_rpt_id =
-      (uint32_t*)fixed_queue_dequeue(p_dev->set_rpt_id_queue);
+      (uint32_t*)fixed_queue_try_dequeue(p_dev->set_rpt_id_queue);
+
+  if (set_rpt_id == NULL) {
+      APPL_TRACE_WARNING("%s: Unable to dequeue report id", __func__);
+      return;
+  }
+
   memset(&ev, 0, sizeof(ev));
   ev.type = UHID_SET_REPORT_REPLY;
   /* get the report id from queue_start pointer */
   ev.u.set_report_reply.id = *set_rpt_id;
-  APPL_TRACE_VERBOSE("%s: set_report_reply_id = %d", __func__,
+  APPL_TRACE_DEBUG("%s: set_report_reply_id = %d", __func__,
                      ev.u.set_report_reply.id);
   ev.u.set_report_reply.err = status;
   uhid_write(p_dev->fd, &ev);
@@ -734,7 +746,7 @@ void bta_hh_co_get_rpt_rsp(uint8_t dev_handle, uint8_t status, uint8_t* p_rpt,
                            uint16_t len) {
   btif_hh_device_t* p_dev;
 
-  APPL_TRACE_VERBOSE("%s: dev_handle = %d. status = %d, len = %d", __func__,
+  APPL_TRACE_DEBUG("%s: dev_handle = %d. status = %d, len = %d", __func__,
                      dev_handle, status, len);
 
   p_dev = btif_hh_find_connected_dev_by_handle(dev_handle);
@@ -745,17 +757,28 @@ void bta_hh_co_get_rpt_rsp(uint8_t dev_handle, uint8_t status, uint8_t* p_rpt,
   }
   if (!p_dev->get_rpt_id_queue || p_dev->fd < 0) return;
 
+  if (fixed_queue_is_empty(p_dev->get_rpt_id_queue)) {
+      APPL_TRACE_WARNING("%s: Queue is empty", __func__);
+      return;
+  }
+
   // Send the HID report to the kernel.
   struct uhid_event ev;
   uint32_t* get_rpt_id =
-      (uint32_t*)fixed_queue_dequeue(p_dev->get_rpt_id_queue);
+      (uint32_t*)fixed_queue_try_dequeue(p_dev->get_rpt_id_queue);
+
+  if (get_rpt_id == NULL) {
+      APPL_TRACE_WARNING("%s: Unable to dequeue report id", __func__);
+      return;
+  }
+
   memset(&ev, 0, sizeof(ev));
   ev.type = UHID_GET_REPORT_REPLY;
   ev.u.get_report_reply.err = status;
   ev.u.get_report_reply.size = len;
   /* get the report id from queue_start pointer */
   ev.u.get_report_reply.id = *get_rpt_id;
-  APPL_TRACE_VERBOSE("%s: get_report_reply_id = %d", __func__,
+  APPL_TRACE_DEBUG("%s: get_report_reply_id = %d", __func__,
                      ev.u.get_report_reply.id);
   if (len > 0) {
     if (len > UHID_DATA_MAX) {

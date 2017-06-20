@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2004-2016 Broadcom Corporation
  *
@@ -29,7 +33,6 @@
 
 #include <string.h>
 
-#include "avdt_api.h"
 #include "bta_av_api.h"
 #include "bta_av_int.h"
 #include "l2c_api.h"
@@ -64,6 +67,18 @@ static void bta_av_accept_signalling_timer_cback(void* data);
 #ifndef AVRC_MIN_META_CMD_LEN
 #define AVRC_MIN_META_CMD_LEN 20
 #endif
+
+#define AVRC_L2CAP_MIN_CONN_FAILURE_CODE 2 /*same as L2CAP_CONN_NO_PSM*/
+
+/* state machine states */
+enum {
+  BTA_AV_INIT_SST,
+  BTA_AV_INCOMING_SST,
+  BTA_AV_OPENING_SST,
+  BTA_AV_OPEN_SST,
+  BTA_AV_RCFG_SST,
+  BTA_AV_CLOSING_SST
+};
 
 /*******************************************************************************
  *
@@ -307,12 +322,13 @@ uint8_t bta_av_rc_create(tBTA_AV_CB* p_cb, uint8_t role, uint8_t shdl,
   tAVRC_CONN_CB ccb;
   BD_ADDR_PTR bda = (BD_ADDR_PTR)bd_addr_any;
   uint8_t status = BTA_AV_RC_ROLE_ACP;
-  tBTA_AV_SCB* p_scb = p_cb->p_scb[shdl - 1];
+  tBTA_AV_SCB* p_scb;
   int i;
   uint8_t rc_handle;
   tBTA_AV_RCB* p_rcb;
 
   if (role == AVCT_INT) {
+    p_scb = p_cb->p_scb[shdl - 1];
     bda = p_scb->peer_addr;
     status = BTA_AV_RC_ROLE_INT;
   } else {
@@ -550,7 +566,8 @@ void bta_av_rc_opened(tBTA_AV_CB* p_cb, tBTA_AV_DATA* p_data) {
                    p_cb->features, rc_open.peer_features);
   if (rc_open.peer_features == 0) {
     /* we have not done SDP on peer RC capabilities.
-     * peer must have initiated the RC connection */
+     * peer must have initiated the RC connection
+     */
     if (p_cb->features & BTA_AV_FEAT_RCCT)
       rc_open.peer_features |= BTA_AV_FEAT_RCTG;
     if (p_cb->features & BTA_AV_FEAT_RCTG)
@@ -1345,7 +1362,10 @@ void bta_av_disable(tBTA_AV_CB* p_cb, UNUSED_ATTR tBTA_AV_DATA* p_data) {
 
   bta_av_close_all_rc(p_cb);
 
-  osi_free_and_reset((void**)&p_cb->p_disc_db);
+  if (p_cb->p_disc_db) {
+    SDP_CancelServiceSearch(p_cb->p_disc_db);
+    osi_free_and_reset((void **)&p_cb->p_disc_db);
+  }
 
   /* disable audio/video - de-register all channels,
    * expect BTA_AV_DEREG_COMP_EVT when deregister is complete */
@@ -1396,12 +1416,40 @@ void bta_av_sig_chg(tBTA_AV_DATA* p_data) {
   if (event == AVDT_CONNECT_IND_EVT) {
     p_lcb = bta_av_find_lcb(p_data->str_msg.bd_addr, BTA_AV_LCB_FIND);
     if (!p_lcb) {
+      if (p_cb->conn_lcb > 0)
+        APPL_TRACE_DEBUG("Already connected to LCBs: 0x%x", p_cb->conn_lcb);
+      /* Check if busy processing a connection, if yes, Reject the
+       * new incoming connection.
+       * This is very rare case to happen as the timeout to start
+       * signalling procedure is just 2 sec.
+       * Also sink initiators will have retry machanism.
+       * Even though busy flag is set during outgoing connection to
+       * reject incoming connection at L2CAP connect request, there
+       * is a chance to get here if the incoming connection has passed
+       * the L2CAP connection stage.
+       */
+      if ((p_data->hdr.offset == AVDT_ACP) &&
+          (AVDT_GetServiceBusyState() == true)) {
+        APPL_TRACE_ERROR("%s(): Incoming conn while processing another.. Reject",
+                         __func__);
+        AVDT_DisconnectReq(p_data->str_msg.bd_addr, NULL);
+        return;
+      }
       /* if the address does not have an LCB yet, alloc one */
       for (xx = 0; xx < BTA_AV_NUM_LINKS; xx++) {
         mask = 1 << xx;
-        APPL_TRACE_DEBUG("conn_lcb: 0x%x", p_cb->conn_lcb);
+        APPL_TRACE_DEBUG("The current conn_lcb: 0x%x", p_cb->conn_lcb);
         /* look for a p_lcb with its p_scb registered */
         if ((!(mask & p_cb->conn_lcb)) && (p_cb->p_scb[xx] != NULL)) {
+          /* Check if the SCB is Free before using for
+           * ACP connection
+           */
+          if ((p_data->hdr.offset == AVDT_ACP) &&
+              (p_cb->p_scb[xx]->state != BTA_AV_INIT_SST)) {
+            APPL_TRACE_DEBUG("SCB in use %d", xx);
+            continue;
+          }
+          APPL_TRACE_DEBUG("Found a free p_lcb : 0x%x", xx);
           p_lcb = &p_cb->lcb[xx];
           p_lcb->lidx = xx + 1;
           bdcpy(p_lcb->addr, p_data->str_msg.bd_addr);
@@ -1515,10 +1563,12 @@ void bta_av_signalling_timer(UNUSED_ATTR tBTA_AV_DATA* p_data) {
       /* this entry is used. check if it is connected */
       p_lcb = &p_cb->lcb[xx];
       if (!p_lcb->conn_msk) {
+        APPL_TRACE_DEBUG("bta_av_sig_timer on IDX = %d",xx);
         bta_sys_start_timer(p_cb->link_signalling_timer,
                             BTA_AV_SIGNALLING_TIMEOUT_MS,
                             BTA_AV_SIGNALLING_TIMER_EVT, 0);
         bdcpy(pend.bd_addr, p_lcb->addr);
+        pend.hndl = p_cb->p_scb[xx]->hndl;
         (*p_cb->p_cback)(BTA_AV_PENDING_EVT, (tBTA_AV*)&pend);
       }
     }
@@ -1752,7 +1802,8 @@ void bta_av_rc_disc_done(UNUSED_ATTR tBTA_AV_DATA* p_data) {
     rc_handle = p_cb->disc & (~BTA_AV_CHNL_MSK);
   } else {
     /* Validate array index*/
-    if (((p_cb->disc & BTA_AV_HNDL_MSK) - 1) < BTA_AV_NUM_STRS) {
+    if ((((p_cb->disc & BTA_AV_HNDL_MSK) - 1) < BTA_AV_NUM_STRS) &&
+        (((p_cb->disc & BTA_AV_HNDL_MSK) - 1) >= 0)) {
       p_scb = p_cb->p_scb[(p_cb->disc & BTA_AV_HNDL_MSK) - 1];
     }
     if (p_scb) {
@@ -1808,7 +1859,17 @@ void bta_av_rc_disc_done(UNUSED_ATTR tBTA_AV_DATA* p_data) {
         if (p_lcb) {
           rc_handle = bta_av_rc_create(p_cb, AVCT_INT,
                                        (uint8_t)(p_scb->hdi + 1), p_lcb->lidx);
-          p_cb->rcb[rc_handle].peer_features = peer_features;
+          if ((rc_handle != BTA_AV_RC_HANDLE_NONE) && (rc_handle < BTA_AV_NUM_RCB)) {
+            p_cb->rcb[rc_handle].peer_features = peer_features;
+          } else {
+            /* cannot create valid rc_handle for current device */
+            APPL_TRACE_ERROR(" No link resources available");
+            p_scb->use_rc = FALSE;
+            bdcpy(rc_open.peer_addr, p_scb->peer_addr);
+            rc_open.peer_features = 0;
+            rc_open.status = BTA_AV_FAIL_RESOURCES;
+            (*p_cb->p_cback)(BTA_AV_RC_CLOSE_EVT, (tBTA_AV *) &rc_open);
+          }
         } else {
           APPL_TRACE_ERROR("can not find LCB!!");
         }
@@ -1836,6 +1897,26 @@ void bta_av_rc_disc_done(UNUSED_ATTR tBTA_AV_DATA* p_data) {
       bdcpy(rc_feat.peer_addr, p_scb->peer_addr);
     (*p_cb->p_cback)(BTA_AV_RC_FEAT_EVT, (tBTA_AV*)&rc_feat);
   }
+}
+
+/*******************************************************************************
+ *
+ * Function         bta_av_rc_collission_detected
+ *
+ * Description      Update App on collision detected case
+ *
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void bta_av_rc_collission_detected(tBTA_AV_DATA *p_data) {
+  tBTA_AV_CB   *p_cb = &bta_av_cb;
+  tBTA_AV_RC_COLL_DETECTED rc_coll;
+  tBTA_AV_RC_COLLISSION_DETECTED *p_msg =
+                (tBTA_AV_RC_COLLISSION_DETECTED *)p_data;
+  rc_coll.rc_handle = p_msg->handle;
+  bdcpy(rc_coll.peer_addr, p_msg->peer_addr);
+  (*p_cb->p_cback)(BTA_AV_RC_COLL_DETECTED_EVT, (tBTA_AV *) &rc_coll);
 }
 
 /*******************************************************************************
@@ -1900,11 +1981,6 @@ void bta_av_rc_closed(tBTA_AV_DATA* p_data) {
       } else {
         /* AVCT CCB is still there. dealloc */
         bta_av_del_rc(p_rcb);
-
-        /* if the AVRCP is no longer listening, create the listening channel */
-        if (bta_av_cb.rc_acp_handle == BTA_AV_RC_HANDLE_NONE &&
-            bta_av_cb.features & BTA_AV_FEAT_RCTG)
-          bta_av_rc_create(&bta_av_cb, AVCT_ACP, 0, BTA_AV_NUM_LINKS + 1);
       }
     } else if ((p_rcb->handle != BTA_AV_RC_HANDLE_NONE) &&
                (p_rcb->status & BTA_AV_RC_CONN_MASK)) {

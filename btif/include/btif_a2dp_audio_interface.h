@@ -1,9 +1,11 @@
 /******************************************************************************
  * Copyright (C) 2017, The Linux Foundation. All rights reserved.
- * Not a Contribution.
- ******************************************************************************/
+ *
+ *  Not a Contribution
+ *****************************************************************************/
 /******************************************************************************
  *
+ *  Copyright (C) 2016 The Android Open Source Project
  *  Copyright (C) 2009-2012 Broadcom Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,27 +22,28 @@
  *
  ******************************************************************************/
 
-#include "audio_a2dp_hw.h"
 
-#define CASE_RETURN_STR(const) \
-  case const:                  \
-    return #const;
+#ifndef BTIF_A2DP_AUDIO_INTERFACE_H
+#define BTIF_A2DP_AUDIO_INTERFACE_H
 
-const char* audio_a2dp_hw_dump_ctrl_event(tA2DP_CTRL_CMD event) {
-  switch (event) {
-    CASE_RETURN_STR(A2DP_CTRL_CMD_NONE)
-    CASE_RETURN_STR(A2DP_CTRL_CMD_CHECK_READY)
-    CASE_RETURN_STR(A2DP_CTRL_CMD_START)
-    CASE_RETURN_STR(A2DP_CTRL_CMD_CHECK_STREAM_STARTED)
-    CASE_RETURN_STR(A2DP_CTRL_CMD_STOP)
-    CASE_RETURN_STR(A2DP_CTRL_CMD_SUSPEND)
-    CASE_RETURN_STR(A2DP_CTRL_GET_INPUT_AUDIO_CONFIG)
-    CASE_RETURN_STR(A2DP_CTRL_GET_OUTPUT_AUDIO_CONFIG)
-    CASE_RETURN_STR(A2DP_CTRL_SET_OUTPUT_AUDIO_CONFIG)
-    CASE_RETURN_STR(A2DP_CTRL_CMD_OFFLOAD_START)
-    default:
-      break;
-  }
+//#include "audio_a2dp_hw.h"
+#include "bta_av_api.h"
+typedef enum {
+  A2DP_CTRL_GET_CODEC_CONFIG = 15,
+  A2DP_CTRL_GET_MULTICAST_STATUS,
+  A2DP_CTRL_GET_CONNECTION_STATUS,
+  A2DP_CTRL_GET_NUM_CONNECTED_DEVICE,
+}tA2DP_CTRL_EXT_CMD;
 
-  return "UNKNOWN A2DP_CTRL_CMD";
-}
+typedef enum {
+  A2DP_CTRL_ACK_PENDING = 5,
+}tA2DP_CTRL_ACK_EXT;
+
+void btif_a2dp_audio_on_started(tBTA_AV_STATUS status);
+void btif_a2dp_audio_on_stopped(tBTA_AV_STATUS status);
+void btif_a2dp_audio_on_suspended(tBTA_AV_STATUS status);
+void btif_a2dp_audio_interface_init(void);
+void btif_a2dp_audio_interface_deinit(void);
+
+#endif /*BTIF_A2DP_AUDIO_INTERFACE_H*/
+

@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2002-2012 Broadcom Corporation
  *
@@ -491,6 +495,51 @@ void avdt_scb_hdl_security_rsp(tAVDT_SCB* p_scb, tAVDT_SCB_EVT* p_data) {
 
 /*******************************************************************************
  *
+ * Function         avdt_check_sep_state
+ *
+ * Description      This function checks if either of the SEID is in use in the
+ *                  cluster of a stream in which the ACP SEP for the remote
+ *                  initiated connection belongs to.
+ *
+ * Returns          True if one SEID in the cluster is busy, False otherwise
+ *
+ ******************************************************************************/
+bool avdt_check_sep_state(tAVDT_SCB *p_scb) {
+  int i,j;
+  int num_sep = 0,sep_offset;
+  int num_stream = avdt_scb_get_max_av_client();
+  if (num_stream == 1)
+    return false;
+  for (i = 0;i < AVDT_NUM_SEPS; i++) {
+    tAVDT_SCB *temp_scb = &avdt_cb.scb[i];
+    if (p_scb == temp_scb)
+      break;
+  }
+  if (i < AVDT_NUM_SEPS) {
+    sep_offset = i;
+    tAVDT_SCB *temp_scb = &avdt_cb.scb[0];
+    for (j = 0; j < AVDT_NUM_SEPS; j++, temp_scb++) {
+      if (temp_scb->allocated)
+        num_sep++;
+    }
+    int num_stream  = avdt_scb_get_max_av_client();
+    int num_codecs = num_sep/num_stream;
+    for (i = 0; i < num_sep;i += num_codecs) {
+      bool in_use = false;
+      for (j = i;j < (i+num_codecs); j++) {
+        tAVDT_SCB *temp_scb = &avdt_cb.scb[j];
+        if (temp_scb->in_use)
+          in_use = true;
+      }
+      if (in_use && (sep_offset >= i && sep_offset < j))
+        return true;
+    }
+  }
+  return false;
+}
+
+/*******************************************************************************
+ *
  * Function         avdt_scb_hdl_setconfig_cmd
  *
  * Description      This function marks the SCB as in use and copies the
@@ -503,7 +552,8 @@ void avdt_scb_hdl_security_rsp(tAVDT_SCB* p_scb, tAVDT_SCB_EVT* p_data) {
 void avdt_scb_hdl_setconfig_cmd(tAVDT_SCB* p_scb, tAVDT_SCB_EVT* p_data) {
   tAVDT_CFG* p_cfg;
 
-  if (!p_scb->in_use) {
+  if ((!p_scb->in_use) && !(avdt_check_sep_state(p_scb)) &&
+      (!avdt_cb.conn_in_progress)) {
     p_cfg = p_data->msg.config_cmd.p_cfg;
     if (A2DP_GetCodecType(p_scb->cs.cfg.codec_info) ==
         A2DP_GetCodecType(p_cfg->codec_info)) {

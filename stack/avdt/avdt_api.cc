@@ -1,4 +1,8 @@
 /******************************************************************************
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ ******************************************************************************/
+/******************************************************************************
  *
  *  Copyright (C) 2002-2012 Broadcom Corporation
  *
@@ -134,6 +138,39 @@ void AVDT_Deregister(void) {
   L2CA_Deregister(AVDT_PSM);
 }
 
+/*******************************************************************************
+ *
+ * Function         AVDT_UpdateServiceBusyState
+ *
+ * Description      This function is used to set the service busy state
+ *                  during outgoing connection to properly handle the
+ *                  connections in upper layers.
+ *
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void AVDT_UpdateServiceBusyState(bool state) {
+    AVDT_TRACE_DEBUG("%s(): state-%d", __func__, state);
+    avdt_cb.conn_in_progress = state;
+}
+
+/*******************************************************************************
+ *
+ * Function         AVDT_GetServiceBusyState
+ *
+ * Description      This function is used to get the service busy state
+ *
+ *
+ * Returns          bool
+ *
+ ******************************************************************************/
+bool AVDT_GetServiceBusyState(void)
+{
+    AVDT_TRACE_DEBUG("%s(): state-%d", __func__, avdt_cb.conn_in_progress);
+    return avdt_cb.conn_in_progress;
+}
+
 void AVDT_AbortReq(uint8_t handle) {
   AVDT_TRACE_ERROR("%s", __func__);
 
@@ -166,14 +203,17 @@ uint16_t AVDT_CreateStream(uint8_t* p_handle, tAVDT_CS* p_cs) {
   /* Verify parameters; if invalid, return failure */
   if (((p_cs->cfg.psc_mask & (~AVDT_PSC)) != 0) ||
       (p_cs->p_ctrl_cback == NULL)) {
+    AVDT_TRACE_ERROR("%s(): bad param", __func__);
     result = AVDT_BAD_PARAMS;
   }
   /* Allocate scb; if no scbs, return failure */
   else {
     p_scb = avdt_scb_alloc(p_cs);
     if (p_scb == NULL) {
+      AVDT_TRACE_ERROR("%s(): no resources", __func__);
       result = AVDT_NO_RESOURCES;
     } else {
+      AVDT_TRACE_DEBUG("%s(): allocated", __func__);
       *p_handle = avdt_scb_to_hdl(p_scb);
     }
   }
@@ -201,9 +241,11 @@ uint16_t AVDT_RemoveStream(uint8_t handle) {
   /* look up scb */
   p_scb = avdt_scb_by_hdl(handle);
   if (p_scb == NULL) {
+    AVDT_TRACE_ERROR("%s(): bad handle - %d", __func__, handle);
     result = AVDT_BAD_HANDLE;
   } else {
     /* send remove event to scb */
+    AVDT_TRACE_DEBUG("%s(): removing stream with handle - %d", __func__, handle);
     avdt_scb_event(p_scb, AVDT_SCB_API_REMOVE_EVT, NULL);
   }
   return result;
@@ -1128,4 +1170,17 @@ uint8_t AVDT_SetTraceLevel(uint8_t new_level) {
   if (new_level != 0xFF) avdt_cb.trace_level = new_level;
 
   return (avdt_cb.trace_level);
+}
+
+/*******************************************************************************
+ *
+ * Function         AVDT_UpdateMaxAvClients
+ *
+ * Description      Update max simultaneous AV connections supported
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void AVDT_UpdateMaxAvClients(uint8_t max_clients) {
+    avdt_scb_set_max_av_client(max_clients);
 }

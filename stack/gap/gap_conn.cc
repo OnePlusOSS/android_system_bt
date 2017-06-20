@@ -139,8 +139,9 @@ uint16_t GAP_ConnOpen(const char* p_serv_name, uint8_t service_id,
   p_ccb = gap_allocate_ccb();
   if (p_ccb == NULL) return (GAP_INVALID_HANDLE);
 
-  /* update the transport */
+  /* update the transport ,service_id */
   p_ccb->transport = transport;
+  p_ccb->service_id = service_id;
 
   /* If caller specified a BD address, save it */
   if (p_rem_bda) {
@@ -211,7 +212,6 @@ uint16_t GAP_ConnOpen(const char* p_serv_name, uint8_t service_id,
   }
 
   /* Register with Security Manager for the specific security level */
-  p_ccb->service_id = service_id;
   if (!BTM_SetSecurityLevel((uint8_t)!is_server, p_serv_name, p_ccb->service_id,
                             security, p_ccb->psm, 0, 0)) {
     GAP_TRACE_ERROR("GAP_CONN - Security Error");
@@ -641,7 +641,7 @@ uint16_t GAP_ConnGetL2CAPCid(uint16_t gap_handle) {
 
 /*******************************************************************************
  *
- * Function         gap_tx_connect_ind
+** Function         gap_tx_complete_ind
  *
  * Description      Sends out GAP_EVT_TX_EMPTY when transmission has been
  *                  completed.
@@ -656,6 +656,11 @@ void gap_tx_complete_ind(uint16_t l2cap_cid, uint16_t sdu_sent) {
   if ((p_ccb->con_state == GAP_CCB_STATE_CONNECTED) && (sdu_sent == 0xFFFF)) {
     GAP_TRACE_EVENT("%s: GAP_EVT_TX_EMPTY", __func__);
     p_ccb->p_callback(p_ccb->gap_handle, GAP_EVT_TX_EMPTY);
+  }
+  else if ((p_ccb->con_state == GAP_CCB_STATE_CONNECTED) && (sdu_sent >= 1))
+  {
+    GAP_TRACE_EVENT("%s: GAP_EVT_TX_DONE", __func__);
+    p_ccb->p_callback (p_ccb->gap_handle, GAP_EVT_TX_DONE);
   }
 }
 

@@ -39,6 +39,7 @@ cc_library_shared {
     logtags: ["../EventLogTags.logtags"],
     shared_libs: [
         "android.hardware.bluetooth@1.0",
+        "com.qualcomm.qti.bluetooth_audio@1.0",
         "libaudioclient",
         "libcutils",
         "libdl",

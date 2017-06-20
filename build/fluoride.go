@@ -60,6 +60,7 @@ func globalDefaults(ctx android.BaseContext) ([]string, []string) {
   } else {
     cflags = append(cflags, "-DHAS_NO_BDROID_BUILDCFG")
   }
+  cflags = append(cflags, "-DWIPOWER_SUPPORTED")
 
   return cflags, includeDirs
 }

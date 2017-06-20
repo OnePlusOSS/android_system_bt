@@ -432,7 +432,7 @@ void bta_gattc_open(tBTA_GATTC_CLCB* p_clcb, tBTA_GATTC_DATA* p_data) {
 
   /* open/hold a connection */
   if (!GATT_Connect(p_clcb->p_rcb->client_if, p_data->api_conn.remote_bda, true,
-                    p_data->api_conn.transport, false,
+                    p_data->api_conn.transport, p_data->api_conn.opportunistic,
                     p_data->api_conn.initiating_phys)) {
     APPL_TRACE_ERROR("Connection open failure");
 
@@ -696,6 +696,7 @@ void bta_gattc_close(tBTA_GATTC_CLCB* p_clcb, tBTA_GATTC_DATA* p_data) {
   if (p_clreg->num_clcb == 0 && p_clreg->dereg_pending) {
     bta_gattc_deregister_cmpl(p_clreg);
   }
+  bta_gattc_clear_notif_reg_on_disc(p_clreg, p_clcb->bda);
 }
 /*******************************************************************************
  *
@@ -1605,6 +1606,11 @@ void bta_gattc_process_indicate(uint16_t conn_id, tGATTC_OPTYPE op,
   /* if non-service change indication/notification, forward to application */
   if (!bta_gattc_process_srvc_chg_ind(conn_id, p_clrcb, p_srcb, p_clcb, &notify,
                                       &p_data->att_value)) {
+    /* Not a service change indication, check for an unallocated HID conn */
+    if (bta_hh_le_is_hh_gatt_if(gatt_if) && !p_clcb) {
+      APPL_TRACE_ERROR("%s, ignore HID ind/notificiation", __func__);
+      return;
+    }
     /* if app registered for the notification */
     if (bta_gattc_check_notif_registry(p_clrcb, p_srcb, &notify)) {
       /* connection not open yet */

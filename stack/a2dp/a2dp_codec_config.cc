@@ -1,4 +1,8 @@
 /*
+ * Copyright (C) 2017, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ */
+/*
  * Copyright (C) 2016 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,6 +44,12 @@
 // |codec_config| is the codec config to initialize.
 // |codec_index| and |codec_priority| are the codec type and priority to use
 // for the initialization.
+bool mA2dp_offload_status = false;
+bool sbc_offload = false;
+bool aac_offload = false;
+bool aptx_offload = false;
+bool aptxhd_offload = false;
+bool ldac_offload = false;
 static void init_btav_a2dp_codec_config(
     btav_a2dp_codec_config_t* codec_config, btav_a2dp_codec_index_t codec_index,
     btav_a2dp_codec_priority_t codec_priority) {
@@ -440,13 +450,20 @@ A2dpCodecs::~A2dpCodecs() {
   lock.unlock();
 }
 
-bool A2dpCodecs::init() {
+bool A2dpCodecs::init(bool isMulticastEnabled, bool isShoEnabled) {
   LOG_DEBUG(LOG_TAG, "%s", __func__);
   std::lock_guard<std::recursive_mutex> lock(codec_mutex_);
 
   for (int i = BTAV_A2DP_CODEC_INDEX_MIN; i < BTAV_A2DP_CODEC_INDEX_MAX; i++) {
     btav_a2dp_codec_index_t codec_index =
         static_cast<btav_a2dp_codec_index_t>(i);
+
+    if ((isMulticastEnabled == true) &&
+        (codec_index != BTAV_A2DP_CODEC_INDEX_SOURCE_SBC)) {
+      LOG_INFO(LOG_TAG, "%s: Selecting SBC codec as multicast is enabled",
+               __func__);
+      continue;
+    }
 
     // Select the codec priority if explicitly configured
     btav_a2dp_codec_priority_t codec_priority =
@@ -1277,4 +1294,65 @@ bool A2DP_InitCodecConfig(btav_a2dp_codec_index_t codec_index,
     return A2DP_VendorInitCodecConfig(codec_index, p_cfg);
 
   return false;
+}
+
+void A2DP_SetOffloadStatus(bool offload_status, char *offload_cap) {
+  //char value[PROPERTY_VALUE_MAX] = {'\0'};
+  char *tok = NULL;
+  char *tmp_token = NULL;
+  LOG_INFO(LOG_TAG,"A2dp_SetOffloadStatus:status = %d",
+                     offload_status);
+  mA2dp_offload_status = offload_status;
+  if (mA2dp_offload_status) {
+    tok = strtok_r((char*)offload_cap, "-", &tmp_token);
+    while (tok != NULL)
+    {
+      if (strcmp(tok,"sbc") == 0) {
+        LOG_INFO(LOG_TAG,"%s: SBC offload supported",__func__);
+        sbc_offload = true;
+      } else if (strcmp(tok,"aptx") == 0) {
+        LOG_INFO(LOG_TAG,"%s: aptX offload supported",__func__);
+        aptx_offload = true;
+      } else if (strcmp(tok,"aac") == 0) {
+        LOG_INFO(LOG_TAG,"%s: AAC offload supported",__func__);
+        aac_offload = TRUE;
+      } else if (strcmp(tok,"aptxhd") == 0) {
+        LOG_INFO(LOG_TAG,"%s: APTXHD offload supported",__func__);
+        aptxhd_offload = TRUE;
+      }
+      tok = strtok_r(NULL, "-", &tmp_token);
+    };
+  }
+}
+
+bool A2DP_GetOffloadStatus() {
+  return mA2dp_offload_status;
+}
+
+bool A2DP_IsCodecEnabledInOffload(btav_a2dp_codec_index_t codec_index) {
+  bool codec_status = false;
+  if (mA2dp_offload_status) {
+    switch (codec_index) {
+    case BTAV_A2DP_CODEC_INDEX_SOURCE_SBC:
+      codec_status = sbc_offload;
+      break;
+    case BTAV_A2DP_CODEC_INDEX_SOURCE_AAC:
+      codec_status = aac_offload;
+      break;
+    case BTAV_A2DP_CODEC_INDEX_SOURCE_APTX:
+      codec_status = aptx_offload;
+      break;
+    case BTAV_A2DP_CODEC_INDEX_SOURCE_APTX_HD:
+      codec_status = aptxhd_offload;
+      break;
+    case BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC:
+      LOG_INFO(LOG_TAG,"LDAC not enabled in offload currently");
+      codec_status = ldac_offload;
+      break;
+    case BTAV_A2DP_CODEC_INDEX_SOURCE_MAX:
+    case BTAV_A2DP_CODEC_INDEX_SINK_MAX:
+      break;
+    }
+  }
+  return codec_status;
 }
