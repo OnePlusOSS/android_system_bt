@@ -22,3 +22,14 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_SRC_FILES := $(LOCAL_MODULE)
 include $(BUILD_PREBUILT)
 
+# Bluetooth interop_database.conf config file
+# ========================================================
+include $(CLEAR_VARS)
+LOCAL_PATH := vendor/qcom/opensource/bluetooth_ext/system_bt_ext/conf/
+LOCAL_MODULE := interop_database.conf
+LOCAL_MODULE_CLASS := ETC
+LOCAL_MODULE_PATH := $(TARGET_OUT)/etc/bluetooth
+LOCAL_MODULE_TAGS := optional
+LOCAL_SRC_FILES := $(LOCAL_MODULE)
+include $(BUILD_PREBUILT)
+

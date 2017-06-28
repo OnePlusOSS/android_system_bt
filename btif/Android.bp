@@ -23,6 +23,7 @@ btifCommonIncludes = [
     "system/bt/utils/include",
     "vendor/qcom/opensource/bluetooth/hal/include",
     "system/libhwbinder/include",
+    "vendor/qcom/opensource/bluetooth_ext/vhal/include",
 ]
 
 // libbtif static library for target
@@ -124,6 +125,7 @@ cc_test {
     static_libs: [
         "libbtcore",
         "libbtif",
+        "libbtif_ext",
         "libbt-stack",
         "libosi",
     ],

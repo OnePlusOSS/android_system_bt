@@ -1367,7 +1367,6 @@ static void btif_dm_search_devices_evt(uint16_t event, char* p_param) {
 
     case BTA_DM_INQ_RES_EVT: {
       /* inquiry result */
-      uint32_t cod;
       bt_bdname_t bdname;
       bt_bdaddr_t bdaddr;
       uint8_t remote_name_len;
@@ -1381,13 +1380,6 @@ static void btif_dm_search_devices_evt(uint16_t event, char* p_param) {
                        bdaddr_to_string(&bdaddr, bdstr, sizeof(bdstr)),
                        p_search_data->inq_res.device_type);
       bdname.name[0] = 0;
-
-      cod = devclass2uint(p_search_data->inq_res.dev_class);
-
-      if (cod == 0) {
-        LOG_DEBUG(LOG_TAG, "%s cod is 0, set as unclassified", __func__);
-        cod = COD_UNCLASSIFIED;
-      }
 
       if (!check_eir_remote_name(p_search_data, bdname.name, &remote_name_len))
         check_cached_remote_name(p_search_data, bdname.name, &remote_name_len);
@@ -1439,10 +1431,15 @@ static void btif_dm_search_devices_evt(uint16_t event, char* p_param) {
         }
 
         /* DEV_CLASS */
-        BTIF_STORAGE_FILL_PROPERTY(&properties[num_properties],
-                                   BT_PROPERTY_CLASS_OF_DEVICE, sizeof(cod),
-                                   &cod);
-        num_properties++;
+        uint32_t cod = devclass2uint(p_search_data->inq_res.dev_class);
+        BTIF_TRACE_DEBUG("%s cod is 0x%06x", __func__, cod);
+        if (cod != 0) {
+          BTIF_STORAGE_FILL_PROPERTY(&properties[num_properties],
+                                     BT_PROPERTY_CLASS_OF_DEVICE, sizeof(cod),
+                                     &cod);
+          num_properties++;
+        }
+
         /* DEV_TYPE */
         /* FixMe: Assumption is that bluetooth.h and BTE enums match */
 
@@ -1531,8 +1528,9 @@ static void btif_dm_search_services_evt(uint16_t event, char* p_param) {
   BTIF_TRACE_EVENT("%s:  event = %d", __func__, event);
   switch (event) {
     case BTA_DM_DISC_RES_EVT: {
-      bt_property_t prop;
       uint32_t i = 0;
+      bt_property_t prop[2];
+      int num_properties = 0;
       bt_bdaddr_t bd_addr;
       bt_status_t ret;
 
@@ -1549,12 +1547,12 @@ static void btif_dm_search_services_evt(uint16_t event, char* p_param) {
         btif_dm_get_remote_services(&bd_addr);
         return;
       }
-      prop.type = BT_PROPERTY_UUIDS;
-      prop.len = 0;
+      prop[0].type = BT_PROPERTY_UUIDS;
+      prop[0].len = 0;
       if ((p_data->disc_res.result == BTA_SUCCESS) &&
           (p_data->disc_res.num_uuids > 0)) {
-        prop.val = p_data->disc_res.p_uuid_list;
-        prop.len = p_data->disc_res.num_uuids * MAX_UUID_SIZE;
+        prop[0].val = p_data->disc_res.p_uuid_list;
+        prop[0].len = p_data->disc_res.num_uuids * MAX_UUID_SIZE;
         for (i = 0; i < p_data->disc_res.num_uuids; i++) {
           char temp[256];
           uuid_to_string_legacy(
@@ -1589,12 +1587,27 @@ static void btif_dm_search_services_evt(uint16_t event, char* p_param) {
 
       if (p_data->disc_res.num_uuids != 0) {
         /* Also write this to the NVRAM */
-        ret = btif_storage_set_remote_device_property(&bd_addr, &prop);
+        ret = btif_storage_set_remote_device_property(&bd_addr, &prop[0]);
         ASSERTC(ret == BT_STATUS_SUCCESS, "storing remote services failed",
                 ret);
+        num_properties++;
+      }
+
+      /* Remote name update */
+      if (strlen((const char *) p_data->disc_res.bd_name)) {
+        prop[1].type = BT_PROPERTY_BDNAME;
+        prop[1].val = p_data->disc_res.bd_name;
+        prop[1].len = strlen((char *)p_data->disc_res.bd_name);
+
+        ret = btif_storage_set_remote_device_property(&bd_addr, &prop[1]);
+        ASSERTC(ret == BT_STATUS_SUCCESS, "failed to save remote device property", ret);
+        num_properties++;
+      }
+
+      if(num_properties > 0) {
         /* Send the event to the BTIF */
         HAL_CBACK(bt_hal_cbacks, remote_device_properties_cb, BT_STATUS_SUCCESS,
-                  &bd_addr, 1, &prop);
+                  &bd_addr, num_properties, prop);
       }
     } break;
 
@@ -1736,7 +1749,7 @@ static void btif_dm_upstreams_evt(uint16_t event, char* p_param) {
       bt_status_t status;
       bt_property_t prop;
       prop.type = BT_PROPERTY_BDNAME;
-      prop.len = BD_NAME_LEN;
+      prop.len = BD_NAME_LEN + 1;
       prop.val = (void*)bdname;
 
       status = btif_storage_get_adapter_property(&prop);
@@ -2202,11 +2215,11 @@ static void bte_search_devices_evt(tBTA_DM_SEARCH_EVT event,
    * to the end of the tBTA_DM_SEARCH */
   switch (event) {
     case BTA_DM_INQ_RES_EVT: {
-      if (p_data->inq_res.p_eir) param_len += HCI_EXT_INQ_RESPONSE_LEN;
+      if (p_data && p_data->inq_res.p_eir) param_len += HCI_EXT_INQ_RESPONSE_LEN;
     } break;
 
     case BTA_DM_DISC_RES_EVT: {
-      if (p_data->disc_res.raw_data_size && p_data->disc_res.p_raw_data)
+      if (p_data && p_data->disc_res.raw_data_size && p_data->disc_res.p_raw_data)
         param_len += p_data->disc_res.raw_data_size;
     } break;
   }
@@ -2215,7 +2228,7 @@ static void bte_search_devices_evt(tBTA_DM_SEARCH_EVT event,
 
   /* if remote name is available in EIR, set teh flag so that stack doesnt
    * trigger RNR */
-  if (event == BTA_DM_INQ_RES_EVT)
+  if (p_data && event == BTA_DM_INQ_RES_EVT)
     p_data->inq_res.remt_name_not_required =
         check_eir_remote_name(p_data, NULL, NULL);
 
@@ -2240,7 +2253,7 @@ static void bte_dm_search_services_evt(tBTA_DM_SEARCH_EVT event,
   if (p_data) param_len += sizeof(tBTA_DM_SEARCH);
   switch (event) {
     case BTA_DM_DISC_RES_EVT: {
-      if ((p_data->disc_res.result == BTA_SUCCESS) &&
+      if ((p_data && p_data->disc_res.result == BTA_SUCCESS) &&
           (p_data->disc_res.num_uuids > 0)) {
         param_len += (p_data->disc_res.num_uuids * MAX_UUID_SIZE);
       }
@@ -3529,11 +3542,13 @@ void btif_debug_bond_event_dump(int fd) {
     btif_bond_event_t* event = &btif_dm_bond_events[i];
 
     char eventtime[20];
-    char temptime[20];
+    char temptime[20] = {0};
     struct tm* tstamp = localtime(&event->timestamp.tv_sec);
-    strftime(temptime, sizeof(temptime), "%H:%M:%S", tstamp);
-    snprintf(eventtime, sizeof(eventtime), "%s.%03ld", temptime,
-             event->timestamp.tv_nsec / 1000000);
+    if (tstamp) {
+      strftime(temptime, sizeof(temptime), "%H:%M:%S", tstamp);
+      snprintf(eventtime, sizeof(eventtime), "%s.%03ld", temptime,
+              event->timestamp.tv_nsec / 1000000);
+    }
 
     char bdaddr[18];
     bdaddr_to_string(&event->bd_addr, bdaddr, sizeof(bdaddr));

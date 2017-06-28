@@ -29,6 +29,8 @@
 #include "hcimsgs.h"
 #include "osi/include/future.h"
 #include "stack/include/btm_ble_api.h"
+#include "osi/include/log.h"
+#include "utils/include/bt_utils.h"
 
 const bt_event_mask_t BLE_EVENT_MASK = {
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x1E, 0x7f}};
@@ -43,6 +45,7 @@ const uint8_t SCO_HOST_BUFFER_SIZE = 0xff;
 #define BLE_SUPPORTED_STATES_SIZE 8
 #define BLE_SUPPORTED_FEATURES_SIZE 8
 #define MAX_LOCAL_SUPPORTED_CODECS_SIZE 8
+#define UNUSED(x) (void)(x)
 
 static const hci_t* hci;
 static const hci_packet_factory_t* packet_factory;
@@ -72,6 +75,7 @@ static uint8_t number_of_local_supported_codecs = 0;
 
 static bool readable;
 static bool ble_supported;
+static bool ble_offload_features_supported;
 static bool simple_pairing_supported;
 static bool secure_connections_supported;
 
@@ -166,14 +170,19 @@ static future_t* start_up(void) {
     page_number++;
   }
 
+  // read BLE offload features support from controller
+  response = AWAIT_COMMAND(packet_factory->make_ble_read_offload_features_support());
+  packet_parser->parse_ble_read_offload_features_response(response, &ble_offload_features_supported);
 #if (SC_MODE_INCLUDED == TRUE)
-  secure_connections_supported =
-      HCI_SC_CTRLR_SUPPORTED(features_classic[2].as_array);
-  if (secure_connections_supported) {
-    response = AWAIT_COMMAND(
-        packet_factory->make_write_secure_connections_host_support(
-            HCI_SC_MODE_ENABLED));
-    packet_parser->parse_generic_command_complete(response);
+  if(ble_offload_features_supported) {
+    secure_connections_supported =
+        HCI_SC_CTRLR_SUPPORTED(features_classic[2].as_array);
+    if (secure_connections_supported) {
+      response = AWAIT_COMMAND(
+          packet_factory->make_write_secure_connections_host_support(
+              HCI_SC_MODE_ENABLED));
+      packet_parser->parse_generic_command_complete(response);
+    }
   }
 #endif
 
@@ -271,7 +280,6 @@ EXPORT_SYMBOL extern const module_t controller_module = {
     .dependencies = {HCI_MODULE, NULL}};
 
 // Interface functions
-
 static bool get_is_ready(void) { return readable; }
 
 static const bt_bdaddr_t* get_address(void) {
@@ -390,6 +398,11 @@ static bool supports_ble_connection_parameters_request(void) {
   return HCI_LE_CONN_PARAM_REQ_SUPPORTED(features_ble.as_array);
 }
 
+static bool supports_ble_offload_features(void) {
+  assert(readable);
+  assert(ble_supported);
+  return ble_offload_features_supported;
+}
 static bool supports_ble_2m_phy(void) {
   CHECK(readable);
   CHECK(ble_supported);
@@ -543,6 +556,7 @@ static const controller_t interface = {
     get_ble_resolving_list_max_size,
     set_ble_resolving_list_max_size,
     get_local_supported_codecs,
+    supports_ble_offload_features,
     get_le_all_initiating_phys};
 
 const controller_t* controller_get_interface() {

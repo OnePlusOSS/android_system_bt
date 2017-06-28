@@ -2930,7 +2930,8 @@ void bta_av_chk_2nd_start(tBTA_AV_SCB* p_scb,
   int i;
   bool new_started = false;
 
-  if ((p_scb->chnl == BTA_AV_CHNL_AUDIO) && (bta_av_cb.audio_open_cnt >= 2)) {
+  if ((p_scb->chnl == BTA_AV_CHNL_AUDIO) && (bta_av_cb.audio_open_cnt >= 2) &&
+      bta_av_is_multicast_enabled()) {
     /* more than one audio channel is connected */
     if (!(p_scb->role & BTA_AV_ROLE_SUSPEND_OPT)) {
       /* this channel does not need to be reconfigured.

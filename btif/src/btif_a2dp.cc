@@ -36,9 +36,11 @@
 #include "btif_util.h"
 #include "osi/include/log.h"
 #include "btif_a2dp_audio_interface.h"
+#include "btif_hf.h"
 
 extern bool btif_a2dp_audio_if_init;
 extern void btif_av_reset_reconfig_flag();
+
 void btif_a2dp_on_idle(int index) {
   APPL_TRACE_EVENT("## ON A2DP IDLE ## peer_sep = %d", btif_av_get_peer_sep(index));
   if (btif_av_get_peer_sep(index) == AVDT_TSEP_SNK) {
@@ -57,7 +59,12 @@ bool btif_a2dp_on_started(tBTA_AV_START* p_av_start, bool pending_start,
   if (p_av_start == NULL) {
     /* ack back a local start request */
     if (btif_av_is_split_a2dp_enabled()) {
-      btif_dispatch_sm_event(BTIF_AV_OFFLOAD_START_REQ_EVT, NULL, 0);
+      if (btif_hf_is_call_vr_idle())
+        btif_dispatch_sm_event(BTIF_AV_OFFLOAD_START_REQ_EVT, NULL, 0);
+      else {
+        APPL_TRACE_ERROR("call in progress, do not start offload");
+        btif_a2dp_audio_on_started(A2DP_CTRL_ACK_INCALL_FAILURE);
+      }
       return true;
     } else {
       btif_a2dp_command_ack(A2DP_CTRL_ACK_SUCCESS);
@@ -148,9 +155,15 @@ void btif_a2dp_on_offload_started(tBTA_AV_STATUS status) {
       break;
   }
   if (btif_av_is_split_a2dp_enabled()) {
-    //TODO send command to btif_a2dp_audio_interface
     btif_a2dp_audio_on_started(status);
     btif_av_reset_reconfig_flag();
+    if (ack != BTA_AV_SUCCESS) {
+      APPL_TRACE_ERROR("%s offload start failed", __func__);
+      bt_bdaddr_t bd_addr;
+      btif_av_get_peer_addr(&bd_addr);
+      btif_dispatch_sm_event(BTIF_AV_DISCONNECT_REQ_EVT,(char*)&bd_addr,
+                             sizeof(bd_addr));
+    } 
   } else {
     btif_a2dp_command_ack(ack);
   }

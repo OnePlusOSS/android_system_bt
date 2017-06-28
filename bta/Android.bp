@@ -20,6 +20,7 @@ cc_defaults {
         "system/bt/udrv/include",
         "system/bt/vnd/include",
         "system/bt/utils/include",
+        "vendor/qcom/opensource/bluetooth_ext/system_bt_ext",
     ],
     shared_libs: [
         "libcutils",

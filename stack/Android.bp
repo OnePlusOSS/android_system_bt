@@ -35,6 +35,7 @@ cc_library_static {
         "system/bt/bta/include",
         "system/bt/bta/sys",
         "system/bt/utils/include",
+        "vendor/qcom/opensource/bluetooth_ext/system_bt_ext",
     ],
     srcs: [
         "a2dp/a2dp_aac.cc",
@@ -174,7 +175,7 @@ cc_library_static {
     ],
     shared_libs: [
         "libcutils",
-        "liblog",
+         "liblog",
     ],
     required: [
         "libldacBT_enc",
@@ -234,6 +235,7 @@ cc_test {
     ],
     shared_libs: [
         "libcutils",
+		"liblog"
     ],
     static_libs: [
         "liblog",

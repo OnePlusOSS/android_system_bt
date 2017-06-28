@@ -34,6 +34,7 @@
 #include "osi/include/osi.h"
 #include "sdp_api.h"
 #include "utl.h"
+#include "device/include/interop_config.h"
 
 /* Number of protocol elements in protocol element list. */
 #define BTA_AG_NUM_PROTO_ELEMS 2
@@ -342,6 +343,14 @@ bool bta_ag_sdp_find_attr(tBTA_AG_SCB* p_scb, tBTA_SERVICE_MASK service) {
         /* Do not update if we already received BRSF.           */
         if (p_scb->peer_features == 0)
           p_scb->peer_features = p_attr->attr_value.v.u16;
+      }
+
+      /* Remote supports 1.7, store it in the file */
+      if (p_scb->peer_version == HFP_VERSION_1_7) {
+         bt_bdaddr_t remote_bdaddr;
+         bdcpy(remote_bdaddr.address, p_scb->peer_addr);
+         interop_database_add_addr(INTEROP_HFP_1_7_BLACKLIST,
+                          (bt_bdaddr_t *)&remote_bdaddr, 3);
       }
     } else /* HSP */
     {

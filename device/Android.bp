@@ -12,15 +12,23 @@ cc_library_static {
         "system/bt/hci/include",
         "system/bt/include",
         "system/bt/stack/include",
+        "vendor/qcom/opensource/bluetooth_ext/system_bt_ext",
     ],
     srcs: [
         "src/controller.cc",
         "src/esco_parameters.cc",
-        "src/interop.cc",
     ],
     shared_libs: [
         "liblog",
     ],
+
+//ifeq ($(strip $(TARGET_BUILD_VARIANT)),userdebug)
+//ifneq ($(strip $(BOARD_HAS_QTI_BT_ROME)),true))
+    cflags: [
+        "-DQLOGKIT_USERDEBUG",
+    ],
+//endif
+//endif
 }
 
 // Bluetooth device unit tests for target
@@ -38,6 +46,7 @@ cc_test {
     ],
     static_libs: [
         "libbtdevice",
+        "libbtdevice_ext",
         "libbtcore",
         "libosi",
         "libosi-AllocationTestHarness",

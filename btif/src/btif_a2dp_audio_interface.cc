@@ -91,10 +91,7 @@ typedef enum {
 
 class BluetoothAudioCallbacks : public IBluetoothAudioCallbacks {
  public:
-/*    BluetoothAudioCallbacks() {i
-    }*/
     Return<Status> a2dp_start_stream_req() {
-        //TODO implement
         uint8_t resp;
         LOG_INFO(LOG_TAG,"a2dp_start_stream_req");
         resp = btif_a2dp_audio_process_request(A2DP_CTRL_CMD_START);
@@ -150,7 +147,6 @@ class BluetoothAudioCallbacks : public IBluetoothAudioCallbacks {
         return ret;
     }
     Return<Status> a2dp_get_connection_status() {
-        // TODO implement
         uint8_t resp;
         LOG_INFO(LOG_TAG,"a2dp_get_connection_status");
         resp = btif_a2dp_audio_process_request(A2DP_CTRL_GET_CONNECTION_STATUS);
@@ -175,8 +171,11 @@ Status mapToStatus(uint8_t resp)
       case A2DP_CTRL_ACK_PENDING:
         return Status::PENDING;
         break;
+      case A2DP_CTRL_ACK_DISCONNECT_IN_PROGRESS:
+        return Status::DISCONNECTING;
       default:
         LOG_INFO(LOG_TAG,"Invalid Status");
+        return Status::UNSUPPORTED;
         break;
     }
   return Status::SUCCESS;
@@ -205,10 +204,6 @@ void btif_a2dp_audio_on_started(tBTA_AV_STATUS status)
 {
   LOG_INFO(LOG_TAG,"btif_a2dp_audio_on_started : status = %d",status);
   if (btAudio != nullptr){
-    if (status != 0)
-    {
-      status = A2DP_CTRL_ACK_FAILURE;
-    }
     if (a2dp_cmd_pending == A2DP_CTRL_CMD_START) {
       LOG_INFO(LOG_TAG,"calling method a2dp_on_started");
       btAudio->a2dp_on_started(mapToStatus(status));
@@ -220,9 +215,6 @@ void btif_a2dp_audio_on_suspended(tBTA_AV_STATUS status)
 {
   LOG_INFO(LOG_TAG,"btif_a2dp_audio_on_suspended : status = %d",status);
   if (btAudio != nullptr) {
-    if (status != 0) {
-      status = A2DP_CTRL_ACK_FAILURE;
-    }
     if (a2dp_cmd_pending == A2DP_CTRL_CMD_SUSPEND) {
       LOG_INFO(LOG_TAG,"calling method a2dp_on_suspended");
       btAudio->a2dp_on_suspended(mapToStatus(status));
@@ -234,12 +226,12 @@ void btif_a2dp_audio_on_stopped(tBTA_AV_STATUS status)
 {
   LOG_INFO(LOG_TAG,"btif_a2dp_audio_on_stopped : status = %d",status);
   if (btAudio != nullptr){
-    if (status != 0) {
-      status = A2DP_CTRL_ACK_FAILURE;
-    }
     if (a2dp_cmd_pending == A2DP_CTRL_CMD_STOP) {
       LOG_INFO(LOG_TAG,"calling method a2dp_on_stopped");
       btAudio->a2dp_on_stopped(mapToStatus(status));
+    } else if (a2dp_cmd_pending == A2DP_CTRL_CMD_START) {
+      LOG_INFO(LOG_TAG,"Remote disconnected when start under progress");
+      btAudio->a2dp_on_started(mapToStatus(A2DP_CTRL_ACK_DISCONNECT_IN_PROGRESS));
     }
   }
 }
@@ -257,7 +249,7 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
         status = A2DP_CTRL_ACK_FAILURE;
         break;
       }
-      if (!btif_hf_is_call_idle()) {
+      if (!btif_hf_is_call_vr_idle()) {
         status  = A2DP_CTRL_ACK_INCALL_FAILURE;
         break;
       }
@@ -267,12 +259,10 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
       }
       /* check whether AV is ready to setup A2DP datapath */
       if (btif_av_stream_ready() || btif_av_stream_started_ready()) {
-        //bbif_a2dp_command_ack(A2DP_CTRL_ACK_SUCCESS);
         status = A2DP_CTRL_ACK_SUCCESS;
       } else {
         APPL_TRACE_WARNING("%s: A2DP command %s while AV stream is not ready",
                            __func__, audio_a2dp_hw_dump_ctrl_event((tA2DP_CTRL_CMD)cmd));
-        //btif_a2dp_command_ack(A2DP_CTRL_ACK_FAILURE);
         status = A2DP_CTRL_ACK_FAILURE;
       }
       break;
@@ -283,18 +273,11 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
        * Some headsets such as "Sony MW600", don't allow AVDTP START
        * while in a call, and respond with BAD_STATE.
        */
-      if (!btif_hf_is_call_idle()) {
-        //btif_a2dp_command_ack(A2DP_CTRL_ACK_INCALL_FAILURE);
+      if (!btif_hf_is_call_vr_idle()) {
         status = A2DP_CTRL_ACK_INCALL_FAILURE;
         break;
       }
 
-      /*if (btif_a2dp_source_is_streaming()) {
-        APPL_TRACE_WARNING("%s: A2DP command %s while source is streaming",
-                           __func__, audio_a2dp_hw_dump_ctrl_event(cmd));
-        btif_a2dp_command_ack(A2DP_CTRL_ACK_FAILURE);
-        break;
-      }*/
       /* In dual a2dp mode check for stream started first*/
       if (btif_av_stream_started_ready()) {
         /*
@@ -305,9 +288,6 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
         break;
       }
       if (btif_av_stream_ready()) {
-        /* Setup audio data channel listener */
-        //UIPC_Open(UIPC_CH_ID_AV_AUDIO, btif_a2dp_data_cb);
-
         /*
          * Post start event and wait for audio path to open.
          * If we are the source, the ACK will be sent after the start
@@ -316,7 +296,6 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
         btif_dispatch_sm_event(BTIF_AV_START_STREAM_REQ_EVT, NULL, 0);
         int idx = btif_av_get_latest_device_idx_to_start();
         if (btif_av_get_peer_sep(idx) == AVDT_TSEP_SRC) {
-          //btif_a2dp_command_ack(A2DP_CTRL_ACK_SUCCESS);
           status = A2DP_CTRL_ACK_SUCCESS;
           break;
         }
@@ -327,7 +306,6 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
 
       APPL_TRACE_WARNING("%s: A2DP command %s while AV stream is not ready",
                          __func__, audio_a2dp_hw_dump_ctrl_event((tA2DP_CTRL_CMD)cmd));
-      //btif_a2dp_command_ack(A2DP_CTRL_ACK_FAILURE);
       return A2DP_CTRL_ACK_FAILURE;
       break;
 
@@ -337,13 +315,11 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
         if (btif_av_get_peer_sep(idx) == AVDT_TSEP_SNK &&
             !btif_a2dp_source_is_streaming()) {
           /* We are already stopped, just ack back */
-          //btif_a2dp_command_ack(A2DP_CTRL_ACK_SUCCESS);
           status = A2DP_CTRL_ACK_SUCCESS;
           break;
         }
 
         btif_dispatch_sm_event(BTIF_AV_STOP_STREAM_REQ_EVT, NULL, 0);
-        //btif_a2dp_command_ack(A2DP_CTRL_ACK_SUCCESS);
         status = A2DP_CTRL_ACK_SUCCESS;
 
         break;
@@ -371,7 +347,6 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
        * remotely suspended, clear REMOTE SUSPEND flag.
        */
       btif_av_clear_remote_suspend_flag();
-      //btif_a2dp_command_ack(A2DP_CTRL_ACK_SUCCESS);
       status = A2DP_CTRL_ACK_SUCCESS;
       break;
 
@@ -382,14 +357,12 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
     case A2DP_CTRL_GET_CODEC_CONFIG:
       {
         uint8_t p_codec_info[AVDT_CODEC_SIZE];
-        //uint8_t param[30], i;
         uint8_t codec_type;
         tA2DP_ENCODER_INIT_PEER_PARAMS peer_param;
         uint32_t bitrate = 0;
         len = 0;
         LOG_INFO(LOG_TAG,"A2DP_CTRL_GET_CODEC_CONFIG");
         A2dpCodecConfig *CodecConfig = bta_av_get_a2dp_current_codec();
-        //btav_a2dp_codec_config_t p_a2dp_codec_cfg  = CodecConfig->getCodecConfig();
         bta_av_co_get_peer_params(&peer_param);
         if (btif_av_stream_started_ready() == FALSE)
         {
@@ -397,8 +370,6 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
             status = A2DP_CTRL_ACK_FAILURE;
             break;
         }
-        //codec_type = p_a2dp_codec_cfg.codec_type;
-        //LOG_INFO(LOG_TAG,"codec_type = %d",codec_type);
         memset(p_codec_info, 0, AVDT_CODEC_SIZE);
         memset(codec_info, 0, 30);
         if (!CodecConfig->copyOutOtaCodecConfig(p_codec_info))
@@ -428,7 +399,6 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
         }
         else if (A2DP_MEDIA_CT_AAC == codec_type)
         {
-          //  TODO:Compute Bitrate based on MTU
           bitrate = 0;//Bitrate is present in codec info
         }
         codec_info[0] = 0; //playing device handle
@@ -439,8 +409,6 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
         codec_info[len++] = (uint8_t)(((bitrate & 0xFF00) >> 8) & 0x00FF);
         codec_info[len++] = (uint8_t)(((bitrate & 0xFF0000) >> 16) & 0x00FF);
         codec_info[len++] = (uint8_t)(((bitrate & 0xFF000000) >> 24) & 0x00FF);
-        //UIPC_Send(UIPC_CH_ID_AV_CTRL, 0, &i, 1);
-        //UIPC_Send(UIPC_CH_ID_AV_CTRL, 0, &param, i);
         LOG_INFO(LOG_TAG,"len  = %d", len);
         status = A2DP_CTRL_ACK_SUCCESS;
         break;
@@ -449,11 +417,9 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
       if (btif_av_is_connected())
       {
           BTIF_TRACE_DEBUG("got valid connection");
-          //a2dp_cmd_acknowledge(A2DP_CTRL_ACK_SUCCESS);
           status = A2DP_CTRL_ACK_SUCCESS;
       }
       else
-          //a2dp_cmd_acknowledge(A2DP_CTRL_ACK_FAILURE);
           status = A2DP_CTRL_ACK_FAILURE;
       break;
 
@@ -481,7 +447,6 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
 
     default:
       APPL_TRACE_ERROR("UNSUPPORTED CMD (%d)", cmd);
-      //btif_a2dp_command_ack(A2DP_CTRL_ACK_FAILURE);
       status = A2DP_CTRL_ACK_FAILURE;
       break;
   }

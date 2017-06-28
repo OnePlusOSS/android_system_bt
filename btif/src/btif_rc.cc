@@ -359,7 +359,9 @@ static int btif_max_rc_clients = 1;
  *****************************************************************************/
 extern bool btif_hf_call_terminated_recently();
 extern bool check_cod(const bt_bdaddr_t* remote_bdaddr, uint32_t cod);
-
+extern bool btif_av_is_split_a2dp_enabled();
+extern int btif_av_idx_by_bdaddr(BD_ADDR bd_addr);
+extern bool btif_av_check_flag_remote_suspend(int index);
 extern fixed_queue_t* btu_general_alarm_queue;
 
 /*****************************************************************************
@@ -721,18 +723,17 @@ void handle_rc_connect(tBTA_AV_RC_OPEN* p_rc_open) {
   p_dev->rc_state = BTRC_CONNECTION_STATE_CONNECTED;
   /* on locally initiated connection we will get remote features as part of
    * connect */
-  if (p_dev->rc_features != 0 && bt_rc_callbacks != NULL) {
-    handle_rc_features(p_dev);
-  }
-
   p_dev->rc_playing_uid = RC_INVALID_TRACK_ID;
   bt_bdaddr_t rc_addr;
   bdcpy(rc_addr.address, p_dev->rc_addr);
+  if (p_dev->rc_features && bt_rc_callbacks != NULL) {
+    if (BTA_AV_FEAT_RCCT)
+      HAL_CBACK(bt_rc_callbacks, connection_state_cb, true, false, &rc_addr);
+    handle_rc_features(p_dev);
+  }
+
   if (bt_rc_ctrl_callbacks != NULL) {
     HAL_CBACK(bt_rc_ctrl_callbacks, connection_state_cb, true, false, &rc_addr);
-  }
-  if (p_dev->rc_features & BTA_AV_FEAT_RCCT) {
-    HAL_CBACK(bt_rc_callbacks, connection_state_cb, true, false, &rc_addr);
   }
   /* report connection state if remote device is AVRCP target */
   handle_rc_ctrl_features(p_dev);
@@ -2043,12 +2044,23 @@ static bt_status_t get_play_status_rsp(bt_bdaddr_t* bd_addr,
 
   BTIF_TRACE_DEBUG("%s: song len %d song pos %d", __func__, song_len, song_pos);
   CHECK_RC_CONNECTED(p_dev);
-
+  int av_index = btif_av_idx_by_bdaddr(bd_addr->address);
   memset(&(avrc_rsp.get_play_status), 0, sizeof(tAVRC_GET_PLAY_STATUS_RSP));
 
   avrc_rsp.get_play_status.song_len = song_len;
   avrc_rsp.get_play_status.song_pos = song_pos;
   avrc_rsp.get_play_status.play_status = play_status;
+  BTIF_TRACE_ERROR("%s: play_status: %d",__FUNCTION__, avrc_rsp.get_play_status.play_status);
+  if ((avrc_rsp.get_play_status.play_status == BTRC_PLAYSTATE_PLAYING) &&
+       (btif_av_check_flag_remote_suspend(av_index)))
+  {
+      BTIF_TRACE_ERROR("%s: clear remote suspend flag: %d",__FUNCTION__, av_index);
+      btif_av_clear_remote_suspend_flag();
+      if (btif_av_is_split_a2dp_enabled())
+      {
+          btif_dispatch_sm_event(BTIF_AV_START_STREAM_REQ_EVT, NULL, 0);
+      }
+  }
 
   avrc_rsp.get_play_status.pdu = AVRC_PDU_GET_PLAY_STATUS;
   avrc_rsp.get_play_status.opcode = opcode_from_pdu(AVRC_PDU_GET_PLAY_STATUS);
@@ -2314,12 +2326,23 @@ static bt_status_t register_notification_rsp(
     BTIF_TRACE_DEBUG(
         "%s: Avrcp Event id is registered: event_id: %x handle: 0x%x", __func__,
         event_id, btif_rc_cb.rc_multi_cb[idx].rc_handle);
+    int av_index = btif_av_idx_by_bdaddr(bd_addr->address);
 
     switch (event_id) {
       case BTRC_EVT_PLAY_STATUS_CHANGED:
         avrc_rsp.reg_notif.param.play_status = p_param->play_status;
-        if (avrc_rsp.reg_notif.param.play_status == PLAY_STATUS_PLAYING)
-          btif_av_clear_remote_suspend_flag();
+        BTIF_TRACE_ERROR("%s: play_status: %d",__FUNCTION__,
+                              avrc_rsp.reg_notif.param.play_status);
+        if ((avrc_rsp.reg_notif.param.play_status == PLAY_STATUS_PLAYING) &&
+            (btif_av_check_flag_remote_suspend(av_index)))
+        {
+            BTIF_TRACE_ERROR("%s: clear remote suspend flag: %d",__FUNCTION__,av_index );
+            btif_av_clear_remote_suspend_flag();
+            if (btif_av_is_split_a2dp_enabled())
+            {
+                btif_dispatch_sm_event(BTIF_AV_START_STREAM_REQ_EVT, NULL, 0);
+            }
+        }
         break;
       case BTRC_EVT_TRACK_CHANGE:
         memcpy(&(avrc_rsp.reg_notif.param.track), &(p_param->track),

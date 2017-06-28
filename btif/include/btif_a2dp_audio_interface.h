@@ -36,7 +36,8 @@ typedef enum {
 }tA2DP_CTRL_EXT_CMD;
 
 typedef enum {
-  A2DP_CTRL_ACK_PENDING = 5,
+  A2DP_CTRL_ACK_PENDING = 9,
+  A2DP_CTRL_ACK_DISCONNECT_IN_PROGRESS
 }tA2DP_CTRL_ACK_EXT;
 
 void btif_a2dp_audio_on_started(tBTA_AV_STATUS status);

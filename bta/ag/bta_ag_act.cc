@@ -452,6 +452,8 @@ void bta_ag_rfc_close(tBTA_AG_SCB* p_scb, UNUSED_ATTR tBTA_AG_DATA* p_data) {
  *
  ******************************************************************************/
 void bta_ag_rfc_open(tBTA_AG_SCB* p_scb, tBTA_AG_DATA* p_data) {
+  bt_bdaddr_t remote_bdaddr;
+  bdcpy(remote_bdaddr.address, p_scb->peer_addr);
   /* initialize AT feature variables */
   p_scb->clip_enabled = false;
   p_scb->ccwa_enabled = false;

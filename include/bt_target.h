@@ -149,6 +149,16 @@
 //------------------End added from bdroid_buildcfg.h---------------------
 
 /******************************************************************************
+**
+** Test Application interface
+**
+******************************************************************************/
+
+#ifndef TEST_APP_INTERFACE
+#define TEST_APP_INTERFACE           TRUE
+#endif
+
+/******************************************************************************
  *
  * Buffer sizes
  *
@@ -450,6 +460,11 @@
 #define BTM_MAX_VSE_CALLBACKS 3
 #endif
 
+/* Safe reattempt even after device is blacklisted for role switch */
+#ifndef BTM_SAFE_REATTEMPT_ROLE_SWITCH
+#define BTM_SAFE_REATTEMPT_ROLE_SWITCH TRUE
+#endif
+
 /******************************************
  *    Lisbon Features
  ******************************************/
@@ -651,6 +666,9 @@
  * BLE
  *
  *****************************************************************************/
+#ifndef HCI_RAW_CMD_INCLUDED
+#define HCI_RAW_CMD_INCLUDED    TRUE
+#endif
 
 #ifndef LOCAL_BLE_CONTROLLER_ID
 #define LOCAL_BLE_CONTROLLER_ID (1)

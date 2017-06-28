@@ -25,6 +25,8 @@ static const char BT_UTILS_MODULE[] = "bt_utils_module";
  *  Type definitions
  ******************************************************************************/
 
+#define COD_AUDIO_DEVICE (0x200400)
+
 typedef enum {
   TASK_HIGH_MEDIA = 0,
   TASK_UIPC_READ,

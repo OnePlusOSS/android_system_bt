@@ -34,6 +34,7 @@
 #include "osi/include/allocator.h"
 #include "osi/include/list.h"
 #include "osi/include/log.h"
+#include "osi/include/compat.h"
 
 typedef struct {
   char* key;
@@ -214,21 +215,27 @@ void config_set_string(config_t* config, const char* section, const char* key,
   section_t* sec = section_find(config, section);
   if (!sec) {
     sec = section_new(section);
-    list_append(config->sections, sec);
-  }
-
-  for (const list_node_t* node = list_begin(sec->entries);
-       node != list_end(sec->entries); node = list_next(node)) {
-    entry_t* entry = static_cast<entry_t*>(list_node(node));
-    if (!strcmp(entry->key, key)) {
-      osi_free(entry->value);
-      entry->value = osi_strdup(value);
-      return;
+    if (sec)
+      list_append(config->sections, sec);
+    else {
+      LOG_ERROR(LOG_TAG,"%s: Unable to allocate memory for section", __func__);
     }
   }
 
-  entry_t* entry = entry_new(key, value);
-  list_append(sec->entries, entry);
+  if (sec) {
+    for (const list_node_t* node = list_begin(sec->entries);
+         node != list_end(sec->entries); node = list_next(node)) {
+      entry_t* entry = static_cast<entry_t*>(list_node(node));
+      if (!strcmp(entry->key, key)) {
+        osi_free(entry->value);
+        entry->value = osi_strdup(value);
+        return;
+      }
+    }
+
+    entry_t* entry = entry_new(key, value);
+    list_append(sec->entries, entry);
+  }
 }
 
 bool config_remove_section(config_t* config, const char* section) {
@@ -325,9 +332,13 @@ bool config_save(const config_t* config, const char* filename) {
   for (const list_node_t* node = list_begin(config->sections);
        node != list_end(config->sections); node = list_next(node)) {
     const section_t* section = (const section_t*)list_node(node);
-    if (fprintf(fp, "[%s]\n", section->name) < 0) {
-      LOG_ERROR(LOG_TAG, "%s unable to write to file '%s': %s", __func__,
-                temp_filename, strerror(errno));
+    if (section->name[0] == '#') {
+        if (fprintf(fp, "%s", section->name) < 0) {
+            LOG_ERROR(LOG_TAG, "%s unable to write to file '%s': %s", __func__, temp_filename, strerror(errno));
+            goto error;
+        }
+    } else if (fprintf(fp, "[%s]\n", section->name) < 0) {
+      LOG_ERROR(LOG_TAG, "%s unable to write to file '%s': %s", __func__, temp_filename, strerror(errno));
       goto error;
     }
 
@@ -423,32 +434,55 @@ static bool config_parse(FILE* fp, config_t* config) {
   CHECK(config != NULL);
 
   int line_num = 0;
-  char line[1024];
-  char section[1024];
+  char line[1024] = { '\0' };
+  char section[1024] = { '\0' };
+  char comment[1024] = { '\0' };
+  bool skip_entries = false;
   strcpy(section, CONFIG_DEFAULT_SECTION);
 
   while (fgets(line, sizeof(line), fp)) {
     char* line_ptr = trim(line);
     ++line_num;
 
-    // Skip blank and comment lines.
-    if (*line_ptr == '\0' || *line_ptr == '#') continue;
+    // ignore the line if the line length is more than 1023
+    if (strlen(line) == 1023){
+        int ch = '\0';
+        // read until next line or EOF
+        while(((ch = fgetc(fp)) != EOF) && (ch != '\n'));
+        continue;
+    }
 
-    if (*line_ptr == '[') {
+    // Skip blanks.
+    if (*line_ptr == '\0')
+      continue;
+
+    if (*line_ptr == '#') {
+        strlcpy(comment, line_ptr, 1024);
+
+        if(!section_find(config, comment)) {
+            section_t *sec = section_new(comment);
+            if (sec)
+                list_append(config->sections, sec);
+        }
+    } else if (*line_ptr == '[') {
       size_t len = strlen(line_ptr);
       if (line_ptr[len - 1] != ']') {
-        LOG_DEBUG(LOG_TAG, "%s unterminated section name on line %d.", __func__,
-                  line_num);
-        return false;
+        LOG_DEBUG(LOG_TAG, "%s unterminated section name on line %d.", __func__, line_num);
+        skip_entries = true;
+        continue;
       }
       strncpy(section, line_ptr + 1, len - 2);
       section[len - 2] = '\0';
+      skip_entries = false;
     } else {
-      char* split = strchr(line_ptr, '=');
+      char *split = strchr(line_ptr, '=');
+      if(skip_entries) {
+        LOG_DEBUG(LOG_TAG, "%s skip entries due invalid section line %d.", __func__, line_num);
+        continue;
+      }
       if (!split) {
-        LOG_DEBUG(LOG_TAG, "%s no key/value separator found on line %d.",
-                  __func__, line_num);
-        return false;
+        LOG_DEBUG(LOG_TAG, "%s no key/value separator found on line %d.", __func__, line_num);
+        continue;
       }
 
       *split = '\0';

@@ -61,7 +61,9 @@ cc_library_shared {
     whole_static_libs: [
         "libbt-bta",
         "libbtdevice",
+        "libbtdevice_ext",
         "libbtif",
+        "libbtif_ext",
         "libbt-hci",
         "libbt-protos",
         "libbt-stack",
@@ -78,6 +80,7 @@ cc_library_shared {
     required: [
         "bt_did.conf",
         "bt_stack.conf",
+        "interop_database.conf",
         "libbt-hci",
         "libldacBT_enc",
         "libldacBT_abr",

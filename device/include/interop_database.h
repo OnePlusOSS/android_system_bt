@@ -65,6 +65,9 @@ static const interop_addr_entry_t interop_addr_database[] = {
     // iKross IKBT83B HS - unacceptably loud volume
     {{{0x00, 0x14, 0x02, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
 
+    // Jabra EXTREME 2 - unacceptably loud volume
+    {{{0x1c, 0x48, 0xf9,      0,0,0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
+
     // JayBird BlueBuds X - low granularity on volume control
     {{{0x44, 0x5e, 0xf3, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
     {{{0xd4, 0x9c, 0x28, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
@@ -122,6 +125,7 @@ static const interop_addr_entry_t interop_addr_database[] = {
     {{{0x28, 0x18, 0x78, 0, 0, 0}}, 3, INTEROP_DISABLE_SDP_AFTER_PAIRING},
     // Tero's Game Controller
     {{{0x60, 0x45, 0xBD, 0, 0, 0}}, 3, INTEROP_DISABLE_SDP_AFTER_PAIRING},
+    {{{0x58, 0x71, 0x33, 0, 0, 0}}, 3, INTEROP_DISABLE_SDP_AFTER_PAIRING},
     // Bluetooth Keyboard
     {{{0x20, 0x4C, 0x10, 0, 0, 0}}, 3, INTEROP_DISABLE_SNIFF_DURING_SCO},
     // Kinivo BTC-450 - volume is erratic when using Absolute Volume
@@ -129,7 +133,7 @@ static const interop_addr_entry_t interop_addr_database[] = {
 };
 
 typedef struct {
-  char name[40];
+  char name[249];
   size_t length;
   interop_feature_t feature;
 } interop_name_entry_t;
@@ -156,12 +160,27 @@ static const interop_name_entry_t interop_name_database[] = {
     {"Microsoft Sculpt Touch Mouse", 28, INTEROP_DISABLE_SDP_AFTER_PAIRING},
     {"Tero's Game Controller", 22, INTEROP_DISABLE_SDP_AFTER_PAIRING},
 
+    // Pixel C Keyboard doesn't respond to service changed indications.
+    {"Pixel C Keyboard", 16, INTEROP_GATTC_NO_SERVICE_CHANGED_IND},
+
+    // HID Authentication Blacklist
+    {"Targus BT Laser Notebook Mouse", 30, INTEROP_DISABLE_AUTH_FOR_HID_POINTING},
+
+    //Below devices reject connection updated with preferred
+    {"BSMBB09DS", 9, INTEROP_DISABLE_LE_CONN_PREFERRED_PARAMS},
+    {"ELECOM", 6, INTEROP_DISABLE_LE_CONN_PREFERRED_PARAMS},
+    {"MB Bluetooth", 12, INTEROP_ADV_AVRCP_VER_1_3},
+
     // HID Moto KZ500 Keyboard - Problematic SDP digitizer descriptor
     {"Motorola Keyboard KZ500", 23, INTEROP_REMOVE_HID_DIG_DESCRIPTOR},
     {"Motorola Keyboard KZ500 v122", 28, INTEROP_REMOVE_HID_DIG_DESCRIPTOR},
 
     // Pixel C Keyboard doesn't respond to service changed indications.
     {"Pixel C Keyboard", 16, INTEROP_GATTC_NO_SERVICE_CHANGED_IND},
+
+    // Honor remote's avdtp start request
+    {"Audi",    4, INTEROP_REMOTE_AVDTP_START},
+    {"Porsche", 7, INTEROP_REMOTE_AVDTP_START},
 };
 
 typedef struct {

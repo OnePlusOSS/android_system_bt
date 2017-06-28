@@ -351,6 +351,9 @@ void btu_hcif_process_event(UNUSED_ATTR uint8_t controller_id, BT_HDR* p_msg) {
       btm_vendor_specific_evt(p, hci_evt_len);
       break;
   }
+#if HCI_RAW_CMD_INCLUDED == TRUE
+  btm_hci_event (p, hci_evt_code , hci_evt_len);
+#endif
 }
 
 /*******************************************************************************
@@ -1288,7 +1291,7 @@ static void btu_hcif_role_change_evt(uint8_t* p) {
   STREAM_TO_UINT8(status, p);
   STREAM_TO_BDADDR(bda, p);
   STREAM_TO_UINT8(role, p);
-
+  btm_blacklist_role_change_device(bda, status);
   l2c_link_role_changed(bda, role, status);
   btm_acl_role_changed(status, bda, role);
 }

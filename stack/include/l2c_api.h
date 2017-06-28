@@ -880,6 +880,20 @@ extern bool L2CA_GetBDAddrbyHandle(uint16_t handle, BD_ADDR bd_addr);
 extern uint8_t L2CA_GetChnlFcrMode(uint16_t lcid);
 
 /*******************************************************************************
+**
+**  Function         L2CA_LE_SetFlowControlCredits
+**
+**  Description      Set flow control credits
+**
+**  Parameters:      Local CID,Credits to set
+**
+**  Return value:    TRUE if flow control set,FALSE otherwise
+**
+*******************************************************************************/
+
+extern bool L2CA_LE_SetFlowControlCredits (uint16_t cid, uint16_t credits);
+
+/*******************************************************************************
  *
  *                      UCD callback prototypes
  *

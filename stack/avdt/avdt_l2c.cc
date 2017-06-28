@@ -187,7 +187,7 @@ void avdt_l2c_connect_ind_cback(BD_ADDR bd_addr, uint16_t lcid,
     result = L2CAP_CONN_NO_RESOURCES;
   }
    /* do we already have a control channel for this peer? */
-  else if ((p_ccb = avdt_ccb_by_bd(bd_addr)) != NULL) {
+  else if ((p_ccb = avdt_ccb_by_bd(bd_addr)) == NULL) {
     /* no, allocate ccb */
     p_ccb = avdt_ccb_alloc(bd_addr);
     if (p_ccb == NULL) {

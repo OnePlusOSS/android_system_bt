@@ -24,5 +24,6 @@
 // Check whether there is a Hands-Free call in progress.
 // Returns true if no call is in progress.
 bool btif_hf_is_call_idle(void);
+bool btif_hf_is_call_vr_idle(void);
 
 #endif /* BTIF_HF_H */

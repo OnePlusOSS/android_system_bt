@@ -425,6 +425,7 @@ typedef struct {
   uint8_t tsep;       /* SEP type */
   uint8_t media_type; /* Media type: AVDT_MEDIA_TYPE_* */
   uint16_t nsc_mask;  /* Nonsupported protocol command messages */
+  uint8_t registration_id;/* All SCBs created during single registration will have same value.*/
 } tAVDT_CS;
 
 /* AVDT data option mask is used in the write request */

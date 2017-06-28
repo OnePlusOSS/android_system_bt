@@ -493,6 +493,32 @@ void avdt_scb_hdl_security_rsp(tAVDT_SCB* p_scb, tAVDT_SCB_EVT* p_data) {
                             (tAVDT_CTRL*)&p_data->msg.security_cmd);
 }
 
+void avdt_set_scbs_busy(tAVDT_SCB *ptr_scb) {
+  AVDT_TRACE_DEBUG(" avdt_set_scbs_busy ");
+  tAVDT_SCB       *p_scb = &avdt_cb.scb[0];
+  uint8_t reg_id = ptr_scb->cs.registration_id;
+  int i = 0;
+  for (i = 0; i < AVDT_NUM_SEPS; i++, p_scb++) {
+    AVDT_TRACE_DEBUG(" avdt_set_scbs_busy SCB[%d] reg_id, sep_type ", i, p_scb->cs.registration_id, p_scb->cs.tsep);
+    if ((p_scb->allocated) && (p_scb->cs.registration_id == reg_id) && (p_scb->cs.tsep == ptr_scb->cs.tsep)) {
+      AVDT_TRACE_DEBUG(" Setting SCB[%d].in_use as true", i);
+      p_scb->in_use = TRUE;
+    }
+  }
+}
+void avdt_set_scbs_free(tAVDT_SCB *ptr_scb) {
+  AVDT_TRACE_DEBUG(" avdt_set_scbs_free ");
+  tAVDT_SCB       *p_scb = &avdt_cb.scb[0];
+  uint8_t reg_id = ptr_scb->cs.registration_id;
+  int i = 0;
+  for (i = 0; i < AVDT_NUM_SEPS; i++, p_scb++) {
+    AVDT_TRACE_DEBUG(" avdt_set_scbs_free SCB[%d] reg_id, sep_type ", i, p_scb->cs.registration_id, p_scb->cs.tsep);
+    if ((p_scb->allocated) && (p_scb->cs.registration_id == reg_id) && (p_scb->cs.tsep == ptr_scb->cs.tsep)) {
+      AVDT_TRACE_DEBUG(" Setting SCB[%d].in_use as false ", i);
+      p_scb->in_use = FALSE;
+    }
+  }
+}
 /*******************************************************************************
  *
  * Function         avdt_check_sep_state
@@ -562,6 +588,7 @@ void avdt_scb_hdl_setconfig_cmd(tAVDT_SCB* p_scb, tAVDT_SCB_EVT* p_data) {
 
       /* copy info to scb */
       p_scb->p_ccb = avdt_ccb_by_idx(p_data->msg.config_cmd.hdr.ccb_idx);
+      avdt_set_scbs_busy(p_scb);
       p_scb->peer_seid = p_data->msg.config_cmd.int_seid;
       memcpy(&p_scb->req_cfg, p_cfg, sizeof(tAVDT_CFG));
       /* call app callback */
@@ -1230,7 +1257,7 @@ void avdt_scb_snd_setconfig_req(tAVDT_SCB* p_scb, tAVDT_SCB_EVT* p_data) {
   p_req = p_data->msg.config_cmd.p_cfg;
   p_cfg = &p_scb->cs.cfg;
   memcpy(&p_scb->req_cfg, p_data->msg.config_cmd.p_cfg, sizeof(tAVDT_CFG));
-
+  avdt_set_scbs_busy(p_scb);
   avdt_msg_send_cmd(p_scb->p_ccb, p_scb, AVDT_SIG_SETCONFIG, &p_data->msg);
 
   /* tell ccb to open channel */
@@ -1498,6 +1525,7 @@ void avdt_scb_transport_channel_timer(tAVDT_SCB* p_scb,
  *
  ******************************************************************************/
 void avdt_scb_clr_vars(tAVDT_SCB* p_scb, UNUSED_ATTR tAVDT_SCB_EVT* p_data) {
+  avdt_set_scbs_free(p_scb);
   p_scb->in_use = false;
   p_scb->p_ccb = NULL;
   p_scb->peer_seid = 0;
