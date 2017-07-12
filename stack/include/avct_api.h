@@ -315,4 +315,31 @@ extern uint16_t AVCT_MsgReq(uint8_t handle, uint8_t label, uint8_t cr,
  ****************************************************************************/
 uint8_t AVCT_SetTraceLevel(uint8_t new_level);
 
+/*******************************************************************************
+**
+** Function         AVCT_CheckIncomingConn
+**
+**
+** Description      Check if remote AVCTP incoming connection in progress
+**
+** Returns          TRUE if icoming connection is in progress,
+**
+*******************************************************************************/
+extern bool AVCT_CheckIncomingConn(BD_ADDR peer_addr);
+
+/*******************************************************************************
+**
+** Function         avct_get_peer_addr_by_ccb
+**
+**
+** Description      Return peer BD address on ccb index (or handle).
+**
+**
+**
+**
+** Returns          BD Address.
+**
+*******************************************************************************/
+extern bool avct_get_peer_addr_by_ccb (uint8_t idx, BD_ADDR addr);
+
 #endif /* AVCT_API_H */

@@ -36,6 +36,23 @@
 #define AVRC_REV_1_4 0x0104
 #define AVRC_REV_1_5 0x0105
 #define AVRC_REV_1_6 0x0106
+#define AVRC_REV_INVALID    0x0000
+
+#ifndef AVRCP_VERSION_PROPERTY
+#define AVRCP_VERSION_PROPERTY "persist.bluetooth.avrcpversion"
+#endif
+
+#ifndef AVRCP_1_6_STRING
+#define AVRCP_1_6_STRING "avrcp16"
+#endif
+
+#ifndef AVRCP_1_5_STRING
+#define AVRCP_1_5_STRING "avrcp15"
+#endif
+
+#ifndef AVRCP_1_4_STRING
+#define AVRCP_1_4_STRING "avrcp14"
+#endif
 
 /* defines from the spec */
 #define AVRC_PACKET_LEN 512 /* You must support 512 byte RC packets */

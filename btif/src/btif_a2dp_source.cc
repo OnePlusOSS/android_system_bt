@@ -74,6 +74,8 @@ enum {
   BTIF_MEDIA_AUDIO_FEEDING_UPDATE
 };
 
+#define MAX_MEDIA_WORKQUEUE_SEM_COUNT 1024
+
 /* tBTIF_A2DP_SOURCE_ENCODER_INIT msg structure */
 typedef struct {
   BT_HDR hdr;
@@ -267,7 +269,7 @@ bool btif_a2dp_source_startup(void) {
 
   /* Start A2DP Source media task */
   btif_a2dp_source_cb.worker_thread =
-      thread_new("btif_a2dp_source_worker_thread");
+      thread_new_sized("media_worker", MAX_MEDIA_WORKQUEUE_SEM_COUNT);
   if (btif_a2dp_source_cb.worker_thread == NULL) {
     APPL_TRACE_ERROR("%s: unable to start up media thread", __func__);
     btif_a2dp_source_state = BTIF_A2DP_SOURCE_STATE_OFF;
@@ -327,6 +329,8 @@ void btif_a2dp_source_shutdown(void) {
 }
 
 static void btif_a2dp_source_shutdown_delayed(UNUSED_ATTR void* context) {
+  APPL_TRACE_DEBUG("%s", __func__);
+  btif_a2dp_command_ack(A2DP_CTRL_ACK_SUCCESS);
   btif_a2dp_control_cleanup();
   fixed_queue_free(btif_a2dp_source_cb.tx_audio_queue, NULL);
   btif_a2dp_source_cb.tx_audio_queue = NULL;

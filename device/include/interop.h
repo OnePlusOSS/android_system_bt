@@ -160,6 +160,11 @@ typedef enum {
   // is not requested explictly.
   INTEROP_DISABLE_AUTH_FOR_HID_POINTING,
 
+  // Do not use AVDTP RECONFIGURE when reconfiguring A2DP streams.
+  // Some A2DP Sink devices report SUCCESS to the AVDTP RECONFIGURE command,
+  // but fail to play the reconfigured audio stream.
+  INTEROP_DISABLE_AVDTP_RECONFIGURE,
+
   END_OF_INTEROP_LIST
 
 } interop_feature_t;

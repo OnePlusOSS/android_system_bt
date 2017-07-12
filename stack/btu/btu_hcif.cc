@@ -51,6 +51,7 @@ using tracked_objects::Location;
 
 // TODO(zachoverflow): remove this horrible hack
 extern fixed_queue_t* btu_hci_msg_queue;
+extern void bte_main_disable(void);
 
 extern void btm_process_cancel_complete(uint8_t status, uint8_t mode);
 extern void btm_ble_test_command_complete(uint8_t* p);
@@ -1244,8 +1245,9 @@ static void btu_hcif_hardware_error_evt(uint8_t* p) {
 
   if(*p == 0x0f || (*p == 0x0a))
   {
-/*   HCI_TRACE_ERROR("Ctlr H/w error event - code:Tigger SSR");
-     bte_ssr_cleanup(0x33);//SSR reason 0x33 = HW ERR EVT */
+     HCI_TRACE_ERROR("Ctlr H/w error event - code:Tigger SSR");
+     bte_main_disable();//Destroys all the BTE tasks
+
      usleep(20000); /* 20 milliseconds */
      //Reset SOC status to trigger hciattach service
 /*   if(osi_property_set("bluetooth.status", "off") < 0)
@@ -1260,7 +1262,7 @@ static void btu_hcif_hardware_error_evt(uint8_t* p) {
      /* Killing the process to force a restart as part of fault tolerance */
      kill(getpid(), SIGKILL);
 #endif
-    }
+  }
 }
 
 /*******************************************************************************

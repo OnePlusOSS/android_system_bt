@@ -195,8 +195,12 @@ void btif_a2dp_audio_interface_init() {
 }
 void btif_a2dp_audio_interface_deinit() {
   LOG_INFO(LOG_TAG,"btif_a2dp_audio_interface_deinit");
-  if (btAudio != nullptr)
-      btAudio->deinitialize_callbacks();
+  if (btAudio != nullptr) {
+    auto ret = btAudio->deinitialize_callbacks();
+    if (!ret.isOk()) {
+      LOG_ERROR(LOG_TAG,"hal server is dead");
+    }
+  }
   btAudio = nullptr;
   LOG_INFO(LOG_TAG,"btif_a2dp_audio_interface_deinit:Exit");
 }

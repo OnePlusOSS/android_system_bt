@@ -528,6 +528,8 @@ typedef struct {
                         successfull, else False if command fails */
   bool suspend_sup;  /* true if Suspend stream is supported, else false if
                         suspend command fails */
+  bool suspend_local_sent;    /* TRUE if outgoing Suspend is sent, else FALSE if
+                        confirmation is received */
   bool deregistring; /* true if deregistering */
   bool sco_suspend;  /* true if SUSPEND is issued automatically for SCO */
   uint8_t coll_mask; /* Mask to check incoming and outgoing collision */

@@ -56,7 +56,7 @@
 // 20 * 512 is not sufficient to smooth the variability for some BT devices,
 // resulting in mixer sleep and throttling. We increase this to 28 * 512 to help
 // reduce the effect of variable data consumption.
-#define AUDIO_STREAM_OUTPUT_BUFFER_SZ (28 * 512)
+#define AUDIO_STREAM_OUTPUT_BUFFER_SZ (28 * 1024)
 #define AUDIO_STREAM_CONTROL_OUTPUT_BUFFER_SZ 256
 
 // AUDIO_STREAM_OUTPUT_BUFFER_PERIODS controls how the socket buffer is divided

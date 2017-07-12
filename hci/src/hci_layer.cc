@@ -81,7 +81,7 @@ static const int BT_HCI_RT_PRIORITY = 1;
 
 // Abort if there is no response to an HCI command.
 static const uint32_t COMMAND_PENDING_TIMEOUT_MS = 2000;
-static const uint32_t COMMAND_TIMEOUT_RESTART_US = 500000;
+static const uint32_t COMMAND_TIMEOUT_RESTART_S = 5;
 
 // Our interface
 static bool interface_created;
@@ -254,6 +254,9 @@ error:
 static future_t* hci_module_shut_down() {
   LOG_INFO(LOG_TAG, "%s", __func__);
 
+  // Close HCI to prevent callbacks.
+  hci_close();
+
   // Free the timers
   {
     std::lock_guard<std::recursive_mutex> lock(commands_pending_response_mutex);
@@ -274,8 +277,6 @@ static future_t* hci_module_shut_down() {
     thread_join(thread);
   }
 
-  // Close HCI to prevent callbacks.
-  hci_close();
 
   {
     std::lock_guard<std::recursive_mutex> lock(commands_pending_response_mutex);
@@ -502,7 +503,7 @@ static void command_timed_out(void* original_wait_entry) {
   osi_free(bt_hdr);
 
   LOG_ERROR(LOG_TAG, "%s restarting the Bluetooth process.", __func__);
-  usleep(COMMAND_TIMEOUT_RESTART_US);
+  sleep(COMMAND_TIMEOUT_RESTART_S);
   hci_close_firmware_log_file(hci_firmware_log_fd);
 
   // We shouldn't try to recover the stack from this command timeout.

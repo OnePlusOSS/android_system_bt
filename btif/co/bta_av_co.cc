@@ -151,7 +151,8 @@ static bool bta_av_co_set_codec_ota_config(tBTA_AV_CO_PEER* p_peer,
 
 /* externs */
 extern int btif_max_av_clients;
-
+extern tBTA_AV_HNDL btif_av_get_reconfig_dev_hndl();
+extern void btif_av_reset_codec_reconfig_flag();
 /*******************************************************************************
  **
  ** Function         bta_av_co_cp_get_flag
@@ -1082,14 +1083,18 @@ bool bta_av_co_set_codec_user_config(
   bool restart_output = false;
   bool config_updated = false;
   bool success = true;
-
+  tBTA_AV_HNDL hndl = btif_av_get_reconfig_dev_hndl();
   // Find the peer that is currently open
   tBTA_AV_CO_PEER* p_peer = nullptr;
-  for (size_t i = 0; i < BTA_AV_CO_NUM_ELEMENTS(bta_av_co_cb.peers); i++) {
-    tBTA_AV_CO_PEER* p_peer_tmp = &bta_av_co_cb.peers[i];
-    if (p_peer_tmp->opened) {
-      p_peer = p_peer_tmp;
-      break;
+  if (hndl > 0)
+    p_peer = bta_av_co_get_peer(hndl);
+  else {
+    for (size_t i = 0; i < BTA_AV_CO_NUM_ELEMENTS(bta_av_co_cb.peers); i++) {
+      tBTA_AV_CO_PEER* p_peer_tmp = &bta_av_co_cb.peers[i];
+      if (p_peer_tmp->opened) {
+        p_peer = p_peer_tmp;
+        break;
+      }
     }
   }
   if (p_peer == nullptr) {
@@ -1156,6 +1161,10 @@ done:
   bdcpy(bt_addr.address, p_peer->addr);
   btif_dispatch_sm_event(BTIF_AV_SOURCE_CONFIG_UPDATED_EVT, &bt_addr,
                          sizeof(bt_bdaddr_t));
+  if (!success || !restart_output) {
+    APPL_TRACE_DEBUG("%s:reseting codec reconfig flag",__func__);
+    btif_av_reset_codec_reconfig_flag();
+  }
   APPL_TRACE_DEBUG("%s BDA:0x%02X%02X%02X%02X%02X%02X", __func__,
                    bt_addr.address[0], bt_addr.address[1], bt_addr.address[2],
                    bt_addr.address[3], bt_addr.address[4], bt_addr.address[5]);

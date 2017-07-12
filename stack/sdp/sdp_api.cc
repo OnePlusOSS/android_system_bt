@@ -36,6 +36,7 @@
 #include "btu.h"
 #include "sdp_api.h"
 #include "sdpint.h"
+#include "avrc_defs.h"
 
 #include "osi/include/osi.h"
 
@@ -1144,4 +1145,36 @@ uint8_t SDP_SetTraceLevel(uint8_t new_level) {
   if (new_level != 0xFF) sdp_cb.trace_level = new_level;
 
   return (sdp_cb.trace_level);
+}
+
+/****************************************************************************
+**
+** Function         SDP_Dev_Blacklisted_For_Avrcp15
+**
+** Description      This function is called to check if Remote device
+**                  is blacklisted for Avrcp version.
+**
+** Returns          BOOLEAN
+**
+*******************************************************************************/
+bool SDP_Dev_Blacklisted_For_Avrcp15 (BD_ADDR addr)
+{
+    int ver;
+    bool ret = sdp_dev_blacklisted_for_avrcp15(addr);
+    SDP_TRACE_ERROR("%s", __func__);
+    if (ret != TRUE)
+    {
+        ver = sdp_get_stored_avrc_tg_version (addr);
+        SDP_TRACE_ERROR("Stored AVRC TG version: 0x%x", ver);
+        if (ver >= AVRC_REV_1_4)
+        {
+            ret = FALSE;
+        }
+        else
+        {
+            ret = TRUE;
+        }
+    }
+    SDP_TRACE_ERROR("%s: blacklisted: %d", __func__, ret);
+    return ret;
 }

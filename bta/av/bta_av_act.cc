@@ -41,6 +41,9 @@
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
 #include "utl.h"
+#include <errno.h>
+
+#include "device/include/interop.h"
 
 #if (BTA_AR_INCLUDED == TRUE)
 #include "bta_ar_api.h"
@@ -59,6 +62,16 @@
 #ifndef BTA_AV_ACCEPT_SIGNALLING_TIMEOUT_MS
 #define BTA_AV_ACCEPT_SIGNALLING_TIMEOUT_MS (2 * 1000) /* 2 seconds */
 #endif
+
+#ifndef AVRC_CONNECT_RETRY_DELAY_MS
+#define AVRC_CONNECT_RETRY_DELAY_MS 2000
+#endif
+
+struct blacklist_entry
+{
+    int ver;
+    char addr[3];
+};
 
 extern fixed_queue_t* btu_bta_alarm_queue;
 
@@ -760,6 +773,9 @@ tBTA_AV_EVT bta_av_proc_meta_cmd(tAVRC_RESPONSE* p_rc_rsp,
   uint8_t u8, pdu, *p;
   uint16_t u16;
   tAVRC_MSG_VENDOR* p_vendor = &p_msg->msg.vendor;
+  bool is_dev_avrcpv_blacklisted = FALSE;
+  int i;
+  BD_ADDR     addr;
 
 #if (AVRC_METADATA_INCLUDED == TRUE)
   pdu = *(p_vendor->p_vendor_data);
@@ -810,8 +826,31 @@ tBTA_AV_EVT bta_av_proc_meta_cmd(tAVRC_RESPONSE* p_rc_rsp,
           } else if (u8 == AVRC_CAP_EVENTS_SUPPORTED) {
             *p_ctype = AVRC_RSP_IMPL_STBL;
             p_rc_rsp->get_caps.count = p_bta_av_cfg->num_evt_ids;
-            memcpy(p_rc_rsp->get_caps.param.event_id,
-                   p_bta_av_cfg->p_meta_evt_ids, p_bta_av_cfg->num_evt_ids);
+            /* DUT has blacklisted few remote dev for Avrcp Version hence
+             * respose for event supported should not have AVRCP 1.5/1.4
+             * version events
+             */
+            if (avct_get_peer_addr_by_ccb(p_msg->handle, addr) == TRUE)
+            {
+                is_dev_avrcpv_blacklisted = SDP_Dev_Blacklisted_For_Avrcp15(addr);
+                BTIF_TRACE_ERROR("Blacklist for AVRCP1.5 = %d", is_dev_avrcpv_blacklisted);
+            }
+            BTIF_TRACE_DEBUG("Blacklist for AVRCP1.5 = %d", is_dev_avrcpv_blacklisted);
+            if (is_dev_avrcpv_blacklisted == TRUE)
+            {
+                for (i = 0; i <= p_bta_av_cfg->num_evt_ids; ++i)
+                {
+                   if (p_bta_av_cfg->p_meta_evt_ids[i] == AVRC_EVT_AVAL_PLAYERS_CHANGE)
+                      break;
+                }
+                p_rc_rsp->get_caps.count = i;
+                memcpy(p_rc_rsp->get_caps.param.event_id, p_bta_av_cfg->p_meta_evt_ids, i);
+            }
+            else
+            {
+                memcpy(p_rc_rsp->get_caps.param.event_id, p_bta_av_cfg->p_meta_evt_ids,
+                       p_bta_av_cfg->num_evt_ids);
+            }
           } else {
             APPL_TRACE_DEBUG("Invalid capability ID: 0x%x", u8);
             /* reject - unknown capability ID */
@@ -1632,6 +1671,75 @@ static void bta_av_accept_signalling_timer_cback(void* data) {
   }
 }
 
+uint16_t bta_get_dut_avrcp_version() {
+    // This api get avrcp version stored in property
+    uint16_t profile_version = AVRC_REV_1_0;
+    char avrcp_version[PROPERTY_VALUE_MAX] = {0};
+    osi_property_get(AVRCP_VERSION_PROPERTY, avrcp_version,
+                     AVRCP_1_4_STRING);
+
+    if (!strncmp(AVRCP_1_6_STRING, avrcp_version,
+                 sizeof(AVRCP_1_6_STRING))) {
+      profile_version = AVRC_REV_1_6;
+    } else {
+      profile_version = AVRC_REV_1_4;
+    }
+    APPL_TRACE_DEBUG(" %s AVRCP version used for sdp: \"%s\"",
+             __func__,avrcp_version);
+    return profile_version;
+}
+
+bool bta_av_check_store_avrc_tg_version(BD_ADDR addr, uint16_t ver)
+{
+    bool is_present = FALSE;
+    struct blacklist_entry data;
+    FILE *fp;
+    bool is_file_updated = FALSE;
+
+    APPL_TRACE_DEBUG("%s target BD Addr: %x:%x:%x", __func__,\
+                        addr[0], addr[1], addr[2]);
+    fp = fopen(AVRC_PEER_VERSION_CONF_FILE, "rb");
+    if (!fp)
+    {
+      APPL_TRACE_ERROR("%s unable to open AVRC Conf file for read: error: (%s)",\
+                                                        __func__, strerror(errno));
+    }
+    else
+    {
+        while (fread(&data, sizeof(data), 1, fp) != 0)
+        {
+            APPL_TRACE_DEBUG("Entry: addr = %x:%x:%x, ver = 0x%x",\
+                    data.addr[0], data.addr[1], data.addr[2], data.ver);
+            if(!memcmp(addr, data.addr, 3))
+            {
+                is_present = TRUE;
+                APPL_TRACE_DEBUG("Entry alreday present, bailing out");
+                break;
+            }
+        }
+        fclose(fp);
+    }
+
+    if (is_present == FALSE)
+    {
+        fp = fopen(AVRC_PEER_VERSION_CONF_FILE, "ab");
+        if (!fp)
+        {
+            APPL_TRACE_ERROR("%s unable to open AVRC Conf file for write: error: (%s)",\
+                                                              __func__, strerror(errno));
+        }
+        else
+        {
+            data.ver = ver;
+            memcpy(data.addr, (const char *)addr, 3);
+            APPL_TRACE_DEBUG("Avrcp version to store = 0x%x", ver);
+            fwrite(&data, sizeof(data), 1, fp);
+            fclose(fp);
+            is_file_updated = TRUE;
+        }
+    }
+    return is_file_updated;
+}
 /*******************************************************************************
  *
  * Function         bta_av_check_peer_features
@@ -1676,6 +1784,22 @@ tBTA_AV_FEAT bta_av_check_peer_features(uint16_t service_uuid) {
       /* get profile version (if failure, version parameter is not updated) */
       SDP_FindProfileVersionInRec(p_rec, UUID_SERVCLASS_AV_REMOTE_CONTROL,
                                   &peer_rc_version);
+
+      if (interop_match_addr(INTEROP_ADV_AVRCP_VER_1_3,
+              (const bt_bdaddr_t*) p_rec->remote_bd_addr))
+      {
+          peer_rc_version = AVRC_REV_1_3;
+          APPL_TRACE_DEBUG("changing peer_rc_version as part of blacklisting to 0x%x",
+                  peer_rc_version);
+      }
+      else if (interop_match_addr(INTEROP_STORE_REMOTE_AVRCP_VERSION_1_4,
+              (const bt_bdaddr_t*) p_rec->remote_bd_addr))
+      {
+          peer_rc_version = AVRC_REV_1_4;
+          APPL_TRACE_DEBUG("changing peer_rc_version as part of blacklisting to 0x%x",
+                  peer_rc_version);
+      }
+
       APPL_TRACE_DEBUG("peer_rc_version 0x%x", peer_rc_version);
 
       if (peer_rc_version >= AVRC_REV_1_3)
@@ -1691,6 +1815,28 @@ tBTA_AV_FEAT bta_av_check_peer_features(uint16_t service_uuid) {
           if (categories & AVRC_SUPF_CT_BROWSE)
             peer_features |= (BTA_AV_FEAT_BROWSE);
         }
+      }
+      if ((peer_rc_version >= AVRC_REV_1_4) &&
+              ((peer_features & BTA_AV_FEAT_BROWSE) || (peer_features & BTA_AV_FEAT_CA)))
+      {
+          bool ret = FALSE;
+          APPL_TRACE_DEBUG("peer version to update: 0x%x", peer_rc_version);
+          uint16_t dut_avrcp_version = bta_get_dut_avrcp_version();
+          uint16_t version_to_store = (dut_avrcp_version > peer_rc_version) ?
+                                             peer_rc_version : dut_avrcp_version;
+          ret = bta_av_check_store_avrc_tg_version(p_rec->remote_bd_addr, version_to_store);
+          /* update UI only in case, if we are less than 1.6 */
+          if ((ret == TRUE) && (dut_avrcp_version < AVRC_REV_1_6))
+          {
+              peer_features |= BTA_AV_FEAT_AVRC_UI_UPDATE;
+              APPL_TRACE_DEBUG("update UI on peer repair request: 0x%x",
+                              peer_features);
+          }
+      }
+      else
+      {
+          APPL_TRACE_DEBUG("No need to store peer version: 0x%x", peer_rc_version);
+          /*No need to update peer version as we send the default version as 1.3*/
       }
     }
   }
@@ -1815,6 +1961,14 @@ void bta_av_rc_disc_done(UNUSED_ATTR tBTA_AV_DATA* p_data) {
   }
 
   APPL_TRACE_DEBUG("%s rc_handle %d", __func__, rc_handle);
+  if (rc_handle == BTA_AV_RC_HANDLE_NONE)
+  {
+      if (AVRC_CheckIncomingConn(p_scb->peer_addr) == TRUE)
+      {
+          bta_sys_start_timer(p_scb->avrc_ct_timer, AVRC_CONNECT_RETRY_DELAY_MS,
+                                 BTA_AV_SDP_AVRC_DISC_EVT,p_scb->hndl);
+      }
+  }
 #if (BTA_AV_SINK_INCLUDED == TRUE)
   if (p_cb->sdp_a2dp_snk_handle) {
     /* This is Sink + CT + TG(Abs Vol) */

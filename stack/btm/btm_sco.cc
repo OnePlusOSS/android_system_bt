@@ -916,11 +916,17 @@ void btm_sco_connected(uint8_t hci_status, BD_ADDR bda, uint16_t hci_handle,
                           hci_handle);
             p->state = SCO_ST_PEND_ROLECHANGE;
           }
-          /* avoid calling disconnect callback because of sco creation race */
-          else if (hci_status != HCI_ERR_LMP_ERR_TRANS_COLLISION) {
-            p->state = SCO_ST_UNUSED;
-            (*p->p_disc_cb)(xx);
-          }
+          /* call disconnect callback to allow SCO state machine move to proper state.
+           * In sco creation race condition when remote rejects our sco request with
+           * error LMP_ERR_TRANS_COLLISION and doesn't even send its request to us,
+           * our SCO state machine remains stuck in SCO_ST_CONNECTING (BTA state machine
+           * in SCO_OPENING_ST). We need to call SCO disconnect callback in such case
+           * also to recover the SCO states. BTA SCO state will move to Listening after
+           * recovery allowing further outgoing connections successfully. Any incoming
+           * connection from remote will also be allowed.
+           */
+           p->state = SCO_ST_UNUSED;
+           (*p->p_disc_cb)(xx);
         } else {
           /* Notify the upper layer that incoming sco connection has failed. */
           if (p->state == SCO_ST_CONNECTING) {

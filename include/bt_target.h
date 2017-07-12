@@ -42,6 +42,11 @@
    L2CAP_EXTFEA_FIXED_CHNLS)
 #endif
 
+/* This feature is used to update any QCOM related changes in the stack*/
+#ifndef BLUETOOTH_QTI_SW
+#define BLUETOOTH_QTI_SW TRUE
+#endif
+
 #ifndef BTUI_OPS_FORMATS
 #define BTUI_OPS_FORMATS (BTA_OP_VCARD21_MASK | BTA_OP_ANY_MASK)
 #endif
@@ -395,7 +400,7 @@
 
 /* The number of security records for services. */
 #ifndef BTM_SEC_MAX_SERVICE_RECORDS
-#define BTM_SEC_MAX_SERVICE_RECORDS 32
+#define BTM_SEC_MAX_SERVICE_RECORDS 64
 #endif
 
 /* If True, force a retrieval of remote device name for each bond in case it's
@@ -707,6 +712,11 @@
 #ifndef BLE_MAX_L2CAP_CLIENTS
 #define BLE_MAX_L2CAP_CLIENTS 15
 #endif
+
+#ifndef BLE_HH_QUALIFICATION_ENABLED
+#define BLE_HH_QUALIFICATION_ENABLED        FALSE
+#endif
+
 
 /******************************************************************************
  *

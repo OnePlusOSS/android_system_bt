@@ -33,6 +33,11 @@ typedef enum {
   TASK_HIGH_MAX
 } tHIGH_PRIORITY_TASK;
 
+/* Run-time configuration file to store AVRCP version info*/
+#ifndef AVRC_PEER_VERSION_CONF_FILE
+#define AVRC_PEER_VERSION_CONF_FILE "/data/misc/bluedroid/avrc_peer_entries.conf"
+#endif
+
 typedef enum {
     BT_SOC_DEFAULT = 0,
     BT_SOC_SMD = BT_SOC_DEFAULT,
@@ -48,6 +53,7 @@ typedef enum {
  ******************************************************************************/
 
 void raise_priority_a2dp(tHIGH_PRIORITY_TASK high_task);
+bool is_device_present(char* header, unsigned char* device_details);
 bt_soc_type get_soc_type();
 
 #endif /* BT_UTILS_H */

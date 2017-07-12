@@ -132,15 +132,14 @@ static void alarm_queue_ready(fixed_queue_t* queue, void* context);
 static void timer_callback(void* data);
 static void callback_dispatch(void* context);
 static bool timer_create_internal(const clockid_t clock_id, timer_t* timer);
-static void update_scheduling_stats(alarm_stats_t* stats, period_ms_t now_ms,
-                                    period_ms_t deadline_ms,
-                                    period_ms_t execution_delta_ms);
 
+#if defined(LOG_ALARM_STAT)
 static void update_stat(stat_t* stat, period_ms_t delta) {
   if (stat->max_ms < delta) stat->max_ms = delta;
   stat->total_ms += delta;
   stat->count++;
 }
+#endif
 
 alarm_t* alarm_new(const char* name) { return alarm_new_internal(name, false); }
 
@@ -566,14 +565,7 @@ static void alarm_queue_ready(fixed_queue_t* queue, UNUSED_ATTR void* context) {
   std::lock_guard<std::recursive_mutex> cb_lock(*alarm->callback_mutex);
   lock.unlock();
 
-  period_ms_t t0 = now();
   callback(data);
-  period_ms_t t1 = now();
-
-  // Update the statistics
-  CHECK(t1 >= t0);
-  period_ms_t delta = t1 - t0;
-  update_scheduling_stats(&alarm->stats, t0, deadline, delta);
 }
 
 // Callback function for wake alarms and our posix timer
@@ -653,6 +645,7 @@ static bool timer_create_internal(const clockid_t clock_id, timer_t* timer) {
   return true;
 }
 
+#if defined(LOG_ALARM_STAT)
 static void update_scheduling_stats(alarm_stats_t* stats, period_ms_t now_ms,
                                     period_ms_t deadline_ms,
                                     period_ms_t execution_delta_ms) {
@@ -671,6 +664,7 @@ static void update_scheduling_stats(alarm_stats_t* stats, period_ms_t now_ms,
     update_stat(&stats->premature_scheduling, delta_ms);
   }
 }
+#endif
 
 static void dump_stat(int fd, stat_t* stat, const char* description) {
   period_ms_t average_time_ms = 0;

@@ -34,6 +34,7 @@
 #include "osi/include/osi.h"
 #include "port_api.h"
 #include "utl.h"
+#include <cutils/properties.h>
 
 /*****************************************************************************
  *  Constants
@@ -182,6 +183,7 @@ void bta_ag_start_dereg(tBTA_AG_SCB* p_scb, tBTA_AG_DATA* p_data) {
  ******************************************************************************/
 void bta_ag_start_open(tBTA_AG_SCB* p_scb, tBTA_AG_DATA* p_data) {
   BD_ADDR pending_bd_addr;
+  tBTA_AG_RFC     *p_buf;
 
   /* store parameters */
   if (p_data) {
@@ -192,6 +194,26 @@ void bta_ag_start_open(tBTA_AG_SCB* p_scb, tBTA_AG_DATA* p_data) {
 
   /* Check if RFCOMM has any incoming connection to avoid collision. */
   if (PORT_IsOpening(pending_bd_addr)) {
+    char value[PROPERTY_VALUE_MAX];
+    if (property_get("persist.bt.max.hs.connections", value, "") &&
+                !strcmp(value, "2") )
+    {
+      // Abort the outgoing connection if incoming connection is from the same device
+      if (bdcmp (pending_bd_addr, p_scb->peer_addr) == 0)
+      {
+        APPL_TRACE_WARNING("%s: p_scb %x, abort outgoing conn, there is"\
+             " an incoming conn from dev %x:%x:%x:%x:%x:%x", __func__,
+             p_scb, p_scb->peer_addr[0], p_scb->peer_addr[1],
+             p_scb->peer_addr[2], p_scb->peer_addr[3], p_scb->peer_addr[4],
+             p_scb->peer_addr[5]);
+        // send ourselves close event for clean up
+        p_buf = (tBTA_AG_RFC *) osi_malloc(sizeof(tBTA_AG_RFC));
+        p_buf->hdr.event = BTA_AG_RFC_CLOSE_EVT;
+        p_buf->hdr.layer_specific = bta_ag_scb_to_idx(p_scb);
+        bta_sys_sendmsg(p_buf);
+        return;
+      }
+    }
     /* Let the incoming connection goes through.                        */
     /* Issue collision for this scb for now.                            */
     /* We will decide what to do when we find incoming connetion later. */
@@ -505,6 +527,7 @@ void bta_ag_rfc_acp_open(tBTA_AG_SCB* p_scb, tBTA_AG_DATA* p_data) {
   tBTA_AG_SCB *ag_scb, *other_scb;
   BD_ADDR dev_addr;
   int status;
+  tBTA_AG_RFC *p_buf;
 
   /* set role */
   p_scb->role = BTA_AG_ACP;
@@ -526,9 +549,29 @@ void bta_ag_rfc_acp_open(tBTA_AG_SCB* p_scb, tBTA_AG_DATA* p_data) {
       alarm_cancel(ag_scb->collision_timer);
 
       if (bdcmp(dev_addr, ag_scb->peer_addr) == 0) {
-        /* If incoming and outgoing device are same, nothing more to do. */
-        /* Outgoing conn will be aborted because we have successful incoming
-         * conn.  */
+        char value[PROPERTY_VALUE_MAX];
+        /* Read the property if multi hf is enabled */
+        if (property_get("persist.bt.max.hs.connections", value, "") &&
+                    !strcmp(value, "2") )
+        {
+          /* If incoming and outgoing device are same, nothing more to do.*/
+          /* Outgoing conn will be aborted because we have successful incoming conn.*/
+          APPL_TRACE_WARNING("%s: p_scb %x, abort outgoing conn,"\
+            "there is an incoming conn from dev %x:%x:%x:%x:%x:%x",
+           __func__, ag_scb, dev_addr[0], dev_addr[1], dev_addr[2],
+           dev_addr[3], dev_addr[4], dev_addr[5]);
+          if (ag_scb->conn_handle)
+          {
+            RFCOMM_RemoveConnection(ag_scb->conn_handle);
+          }
+          // send ourselves close event for clean up
+          // move back to OPENING state from INIT state so that clean up is done
+          ag_scb->state = 1;
+          p_buf = (tBTA_AG_RFC *) osi_malloc(sizeof(tBTA_AG_RFC));
+          p_buf->hdr.event = BTA_AG_RFC_CLOSE_EVT;
+          p_buf->hdr.layer_specific = bta_ag_scb_to_idx(ag_scb);
+          bta_sys_sendmsg(p_buf);
+        }
       } else {
         /* Resume outgoing connection. */
         other_scb = bta_ag_get_other_idle_scb(p_scb);
@@ -830,6 +873,9 @@ void bta_ag_rcvd_slc_ready(tBTA_AG_SCB* p_scb,
 void bta_ag_setcodec(tBTA_AG_SCB* p_scb, tBTA_AG_DATA* p_data) {
   tBTA_AG_PEER_CODEC codec_type = p_data->api_setcodec.codec;
   tBTA_AG_VAL val;
+  val.hdr.handle = bta_ag_scb_to_idx(p_scb);
+  val.hdr.app_id = p_scb->app_id;
+  bdcpy(val.bd_addr, p_scb->peer_addr);
 
   /* Check if the requested codec type is valid */
   if ((codec_type != BTA_AG_CODEC_NONE) && (codec_type != BTA_AG_CODEC_CVSD) &&

@@ -1567,7 +1567,7 @@ static int adev_open_output_stream(struct audio_hw_device* dev,
   DEBUG("success");
   /* Delay to ensure Headset is in proper state when START is initiated from
    * DUT immediately after the connection due to ongoing music playback. */
-  usleep(250000);
+  usleep(1000000);
   return 0;
 
 err_open:

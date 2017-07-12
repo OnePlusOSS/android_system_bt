@@ -157,13 +157,18 @@ void btif_a2dp_on_offload_started(tBTA_AV_STATUS status) {
   if (btif_av_is_split_a2dp_enabled()) {
     btif_a2dp_audio_on_started(status);
     btif_av_reset_reconfig_flag();
-    if (ack != BTA_AV_SUCCESS) {
+    if (ack != BTA_AV_SUCCESS &&
+        btif_av_stream_started_ready()) {
+      /* Offload request will return with failure from btif_av sm if
+      ** suspend is triggered for remote start. Disconnect only if SoC
+      ** returned failure for offload VSC
+      */
       APPL_TRACE_ERROR("%s offload start failed", __func__);
       bt_bdaddr_t bd_addr;
       btif_av_get_peer_addr(&bd_addr);
       btif_dispatch_sm_event(BTIF_AV_DISCONNECT_REQ_EVT,(char*)&bd_addr,
                              sizeof(bd_addr));
-    } 
+    }
   } else {
     btif_a2dp_command_ack(ack);
   }

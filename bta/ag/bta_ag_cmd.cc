@@ -34,6 +34,7 @@
 #include "osi/include/osi.h"
 #include "port_api.h"
 #include "utl.h"
+#include <cutils/properties.h>
 
 /*****************************************************************************
  *  Constants
@@ -828,6 +829,7 @@ void bta_ag_at_hfp_cback(tBTA_AG_SCB* p_scb, uint16_t cmd, uint8_t arg_type,
   tBTA_AG_SCB* ag_scb;
   uint32_t i, ind_id;
   uint32_t bia_masked_out;
+  char value[PROPERTY_VALUE_MAX];
   if (p_arg == NULL) {
     APPL_TRACE_ERROR("%s: p_arg is null, send error and return", __func__);
     bta_ag_send_error(p_scb, BTA_AG_ERR_INV_CHAR_IN_TSTR);
@@ -1060,11 +1062,28 @@ void bta_ag_at_hfp_cback(tBTA_AG_SCB* p_scb, uint16_t cmd, uint8_t arg_type,
       /* store peer features */
       p_scb->peer_features = (uint16_t)int_arg;
 
-      tBTA_AG_FEAT features = p_scb->features;
-      if (p_scb->peer_version < HFP_VERSION_1_7) {
-        features &= HFP_1_6_FEAT_MASK;
+      tBTA_AG_FEAT features = p_scb->features & BTA_AG_BSRF_FEAT_SPEC;
+      if ((p_scb->peer_version < HFP_VERSION_1_7) &&
+           (!(p_scb->peer_features & BTA_AG_PEER_FEAT_HF_IND))) {
+        /* For PTS keep flags as is */
+        if (property_get("bt.pts.certification", value, "false") &&
+            strcmp(value, "true") != 0)
+        {
+          features  = features & ~(BTA_AG_FEAT_HF_IND | BTA_AG_FEAT_ESCO);
+        }
       }
-
+      else if ((p_scb->peer_version == HFP_VERSION_1_7) &&
+                (!(p_scb->peer_features & BTA_AG_PEER_FEAT_HF_IND)))
+      {
+         APPL_TRACE_WARNING("%s: Remote is hfp 1.7 but does not support HF indicators" \
+                  "unset hf indicator bit from BRSF", __func__);
+         /* For PTS keep flags as is */
+         if (property_get("bt.pts.certification", value, "false") &&
+             strcmp(value, "true") != 0)
+         {
+           features = features & ~(BTA_AG_FEAT_HF_IND);
+         }
+      }
       APPL_TRACE_DEBUG("%s BRSF HF: 0x%x, phone: 0x%x", __func__,
                        p_scb->peer_features, features);
 
@@ -1237,6 +1256,7 @@ void bta_ag_at_hfp_cback(tBTA_AG_SCB* p_scb, uint16_t cmd, uint8_t arg_type,
     }
     case BTA_AG_LOCAL_EVT_BCC:
       bta_ag_send_ok(p_scb);
+      p_scb->codec_updated = TRUE;
       bta_ag_sco_open(p_scb, NULL);
       break;
 
@@ -1727,6 +1747,12 @@ void bta_ag_send_bcs(tBTA_AG_SCB* p_scb, tBTA_AG_DATA* p_data) {
  *
  ******************************************************************************/
 void bta_ag_send_ring(tBTA_AG_SCB* p_scb, UNUSED_ATTR tBTA_AG_DATA* p_data) {
+  if ((p_scb->conn_service == BTA_AG_HFP) &&
+      p_scb->callsetup_ind != BTA_AG_CALLSETUP_INCOMING)
+  {
+    APPL_TRACE_DEBUG("don't send the ring since there is no MT call setup");
+    return;
+  }
   /* send RING */
   bta_ag_send_result(p_scb, BTA_AG_LOCAL_RES_RING, NULL, 0);
 

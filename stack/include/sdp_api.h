@@ -637,6 +637,19 @@ uint8_t SDP_SetTraceLevel(uint8_t new_level);
  ******************************************************************************/
 bool SDP_FindServiceUUIDInRec(tSDP_DISC_REC* p_rec, tBT_UUID* p_uuid);
 
+/*********************************************************************************
+**
+** Function         SDP_Dev_Blacklisted_For_Avrcp15
+**
+** Description      This function is called to know is local Avrcp Version
+**                  1.3 as local Avrcp version is send as 1.3 for black listed
+**                  devices
+**
+** Returns          TRUE if AVRCP local Avrcp Version 1.3 else FALSE
+**
+********************************************************************************/
+bool SDP_Dev_Blacklisted_For_Avrcp15 (BD_ADDR addr);
+
 // Converts UUID-16 to UUID-128 by including the base UUID.
 // |uuid16| is the 2-byte UUID to convert.
 // The result with the expanded 128-bit UUID is stored in |p_uuid128|.

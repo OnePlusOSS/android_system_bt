@@ -204,6 +204,14 @@ typedef struct {
 
 } tBTA_HH_LE_HID_SRVC;
 
+#ifndef BTA_HH_LE_HID_SRVC_MAX
+#if (defined(BLE_HH_QUALIFICATION_ENABLED) && BLE_HH_QUALIFICATION_ENABLED == TRUE)
+#define BTA_HH_LE_HID_SRVC_MAX      2
+#else
+#define BTA_HH_LE_HID_SRVC_MAX      1
+#endif
+#endif
+
 /* convert a HID handle to the LE CB index */
 #define BTA_HH_GET_LE_CB_IDX(x) (((x) >> 4) - 1)
 /* convert a GATT connection ID to HID device handle, it is the hi 4 bits of a
@@ -246,11 +254,14 @@ typedef struct {
   tBTA_HH_STATUS status;
   tBTA_GATT_REASON reason;
   bool is_le_device;
-  tBTA_HH_LE_HID_SRVC hid_srvc;
+  uint8_t total_srvc;
+  tBTA_HH_LE_HID_SRVC hid_srvc[BTA_HH_LE_HID_SRVC_MAX];
   uint16_t conn_id;
   bool in_bg_conn;
+  uint8_t cur_srvc_index; /* currently discovering service index */
   uint8_t clt_cfg_idx;
   uint16_t scan_refresh_char_handle;
+  uint16_t scan_int_char_handle;
   bool scps_supported;
 
 #define BTA_HH_LE_SCPS_NOTIFY_NONE 0

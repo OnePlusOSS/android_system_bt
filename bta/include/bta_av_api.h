@@ -80,6 +80,7 @@ typedef uint8_t tBTA_AV_STATUS;
 #define BTA_AV_FEAT_APP_SETTING 0x2000 /* Player app setting support */
 
 /* Internal features */
+#define BTA_AV_FEAT_AVRC_UI_UPDATE 0x4000 /* UI notification for browsing capable remote*/
 #define BTA_AV_FEAT_NO_SCO_SSPD \
   0x8000 /* Do not suspend av streaming as to AG events(SCO or Call) */
 

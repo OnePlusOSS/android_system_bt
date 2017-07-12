@@ -195,6 +195,17 @@ void btif_av_clear_remote_suspend_flag(void);
 bool btif_av_peer_supports_3mbps(void);
 
 /*******************************************************************************
+**
+** Function         btif_av_check_flag_remote_suspend
+**
+** Description      Check whether remote suspend flag is set or not
+**
+** Returns          TRUE if remote suspen flag set
+**
+*******************************************************************************/
+bool btif_av_check_flag_remote_suspend(int index);
+
+/*******************************************************************************
  *
  * Function         btif_av_is_split_a2dp_enabled
  *

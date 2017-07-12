@@ -83,6 +83,7 @@
 #define IDX_GET_TOTAL_NUM_OF_ITEMS_RSP 14
 #define IDX_SEARCH_RSP 15
 #define IDX_ADD_TO_NOW_PLAYING_RSP 16
+#define BTRC_FEAT_AVRC_UI_UPDATE 0x08
 
 /* Update MAX value whenever IDX will be changed */
 #define MAX_CMD_QUEUE_LEN 17
@@ -92,6 +93,8 @@
 #define MAX_TRANSACTIONS_PER_SESSION 16
 #define PLAY_STATUS_PLAYING 1
 #define BTIF_RC_NUM_CONN BT_RC_NUM_APP
+#define ERR_PLAYER_NOT_ADDRESED 0x13
+#define BTIF_RC_HANDLE_NONE 0xFF
 
 #define CHECK_RC_CONNECTED(p_dev)                                          \
   do {                                                                     \
@@ -223,6 +226,8 @@ rc_device_t device;
 
 static bool isShoMcastEnabled = false;
 static void sleep_ms(period_ms_t timeout_ms);
+static bt_status_t set_addressed_player_rsp(bt_bdaddr_t* bd_addr,
+                                            btrc_status_t rsp_status);
 
 /* Response status code - Unknown Error - this is changed to "reserved" */
 #define BTIF_STS_GEN_ERROR 0x06
@@ -358,10 +363,12 @@ static int btif_max_rc_clients = 1;
  *  Externs
  *****************************************************************************/
 extern bool btif_hf_call_terminated_recently();
+extern bool btif_hf_is_call_vr_idle();
 extern bool check_cod(const bt_bdaddr_t* remote_bdaddr, uint32_t cod);
 extern bool btif_av_is_split_a2dp_enabled();
 extern int btif_av_idx_by_bdaddr(BD_ADDR bd_addr);
 extern bool btif_av_check_flag_remote_suspend(int index);
+
 extern fixed_queue_t* btu_general_alarm_queue;
 
 /*****************************************************************************
@@ -551,6 +558,10 @@ void handle_rc_features(btif_rc_device_cb_t* p_dev) {
 
   if (p_dev->rc_features & BTA_AV_FEAT_METADATA) {
     rc_features = (btrc_remote_features_t)(rc_features | BTRC_FEAT_METADATA);
+  }
+
+  if (p_dev->rc_features & BTA_AV_FEAT_AVRC_UI_UPDATE) {
+      rc_features = (btrc_remote_features_t)(rc_features | BTRC_FEAT_AVRC_UI_UPDATE);
   }
 
   BTIF_TRACE_DEBUG("%s: rc_features: 0x%x", __func__, rc_features);
@@ -772,7 +783,7 @@ void handle_rc_disconnect(tBTA_AV_RC_CLOSE* p_rc_close) {
 
   /* check if there is another device connected */
   if (p_dev->rc_state == BTRC_CONNECTION_STATE_CONNECTED) {
-    p_dev->rc_handle = 0;
+    p_dev->rc_handle = BTIF_RC_HANDLE_NONE;
     p_dev->rc_connected = false;
     p_dev->rc_state = BTRC_CONNECTION_STATE_DISCONNECTED;
 
@@ -781,6 +792,8 @@ void handle_rc_disconnect(tBTA_AV_RC_CLOSE* p_rc_close) {
     p_dev->rc_features = 0;
     p_dev->rc_vol_label = MAX_LABEL;
     p_dev->rc_volume = MAX_VOLUME;
+    p_dev->rc_pending_play = false;
+    p_dev->rc_play_processed = false;
   }
   if (get_num_connected_devices() == 0) {
     BTIF_TRACE_DEBUG("%s: Closing all handles", __func__);
@@ -1028,20 +1041,6 @@ void handle_rc_vendorunique_rsp(tBTA_AV_REMOTE_RSP* p_remote_rsp) {
   }
 }
 
-void handle_uid_changed_notification(btif_rc_device_cb_t* p_dev, uint8_t label,
-                                     tAVRC_COMMAND* pavrc_command) {
-  tAVRC_RESPONSE avrc_rsp = {0};
-  avrc_rsp.rsp.pdu = pavrc_command->pdu;
-  avrc_rsp.rsp.status = AVRC_STS_NO_ERROR;
-  avrc_rsp.rsp.opcode = pavrc_command->cmd.opcode;
-
-  avrc_rsp.reg_notif.event_id = pavrc_command->reg_notif.event_id;
-  avrc_rsp.reg_notif.param.uid_counter = 0;
-
-  send_metamsg_rsp(p_dev, -1, label, AVRC_RSP_INTERIM, &avrc_rsp);
-  send_metamsg_rsp(p_dev, -1, label, AVRC_RSP_CHANGED, &avrc_rsp);
-}
-
 /***************************************************************************
  *  Function       handle_rc_metamsg_cmd
  *
@@ -1131,11 +1130,6 @@ void handle_rc_metamsg_cmd(tBTA_AV_META_MSG* pmeta_msg) {
           pmeta_msg->code);
       p_dev->rc_notif[event_id - 1].bNotify = true;
       p_dev->rc_notif[event_id - 1].label = pmeta_msg->label;
-
-      if (event_id == AVRC_EVT_UIDS_CHANGE) {
-        handle_uid_changed_notification(p_dev, pmeta_msg->label, &avrc_command);
-        return;
-      }
     }
 
     BTIF_TRACE_EVENT("%s: Passing received metamsg command to app. pdu: %s",
@@ -1727,6 +1721,11 @@ static void btif_rc_upstreams_evt(uint16_t event, tAVRC_COMMAND* pavrc_cmd,
 
     case AVRC_PDU_SET_ADDRESSED_PLAYER: {
       fill_pdu_queue(IDX_SET_ADDR_PLAYER_RSP, ctype, label, true, p_dev);
+      if (!btif_hf_is_call_vr_idle()) {
+          BTIF_TRACE_EVENT(" %s() call active and setbrowsed player called, reject ", __func__);
+          set_addressed_player_rsp(&rc_addr, (btrc_status_t)ERR_PLAYER_NOT_ADDRESED);
+          return;
+      }
       HAL_CBACK(bt_rc_callbacks, set_addressed_player_cb,
                 pavrc_cmd->addr_player.player_id, &rc_addr);
     } break;
@@ -1970,6 +1969,7 @@ static bt_status_t init(btrc_callbacks_t* callbacks, int max_connections) {
     btif_rc_cb.rc_multi_cb[idx].rc_vol_label = MAX_LABEL;
     btif_rc_cb.rc_multi_cb[idx].rc_volume = MAX_VOLUME;
     btif_rc_cb.rc_multi_cb[idx].rc_state = BTRC_CONNECTION_STATE_DISCONNECTED;
+    btif_rc_cb.rc_multi_cb[idx].rc_handle = BTIF_RC_HANDLE_NONE;
   }
   lbl_init();
 
@@ -2040,11 +2040,13 @@ static bt_status_t get_play_status_rsp(bt_bdaddr_t* bd_addr,
                                        btrc_play_status_t play_status,
                                        uint32_t song_len, uint32_t song_pos) {
   tAVRC_RESPONSE avrc_rsp;
+  int av_index;
+
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
 
   BTIF_TRACE_DEBUG("%s: song len %d song pos %d", __func__, song_len, song_pos);
   CHECK_RC_CONNECTED(p_dev);
-  int av_index = btif_av_idx_by_bdaddr(bd_addr->address);
+  av_index = btif_av_idx_by_bdaddr(bd_addr->address);
   memset(&(avrc_rsp.get_play_status), 0, sizeof(tAVRC_GET_PLAY_STATUS_RSP));
 
   avrc_rsp.get_play_status.song_len = song_len;
@@ -2067,7 +2069,11 @@ static bt_status_t get_play_status_rsp(bt_bdaddr_t* bd_addr,
   avrc_rsp.get_play_status.status =
       ((play_status != BTRC_PLAYSTATE_ERROR) ? AVRC_STS_NO_ERROR
                                              : AVRC_STS_BAD_PARAM);
-
+  if ((avrc_rsp.get_play_status.play_status == BTRC_PLAYSTATE_PLAYING) &&
+       (btif_av_check_flag_remote_suspend(av_index))) {
+      BTIF_TRACE_ERROR("%s: clear remote suspend flag: %d",__FUNCTION__, av_index);
+      btif_av_clear_remote_suspend_flag();
+  }
   /* Send the response */
   send_metamsg_rsp(p_dev, IDX_GET_PLAY_STATUS_RSP,
                    p_dev->rc_pdu_info[IDX_GET_PLAY_STATUS_RSP].label,
@@ -2189,7 +2195,7 @@ static bt_status_t register_notification_rsp_sho_mcast(
     BTIF_TRACE_ERROR("%s: idx is invalid", __func__);
     return BT_STATUS_FAIL;
   }
-
+  int av_index = btif_av_idx_by_bdaddr(bd_addr->address);
 
   memset(&(avrc_rsp.reg_notif), 0, sizeof(tAVRC_REG_NOTIF_RSP));
 
@@ -2220,8 +2226,17 @@ static bt_status_t register_notification_rsp_sho_mcast(
   switch (event_id) {
     case BTRC_EVT_PLAY_STATUS_CHANGED:
       avrc_rsp.reg_notif.param.play_status = p_param->play_status;
-      if (avrc_rsp.reg_notif.param.play_status == PLAY_STATUS_PLAYING)
-        btif_av_clear_remote_suspend_flag();
+      /* Clear remote suspend flag, as remote device issues
+       * suspend within 3s after pause, and DUT within 3s
+       * initiates Play
+      */
+      BTIF_TRACE_DEBUG("%s: play_status: %d",__FUNCTION__,
+                            avrc_rsp.reg_notif.param.play_status);
+      if ((avrc_rsp.reg_notif.param.play_status == PLAY_STATUS_PLAYING) &&
+          (btif_av_check_flag_remote_suspend(av_index))) {
+          BTIF_TRACE_ERROR("%s: clear remote suspend flag: %d",__FUNCTION__,av_index );
+          btif_av_clear_remote_suspend_flag();
+      }
       break;
     case BTRC_EVT_TRACK_CHANGE:
       memcpy(&(avrc_rsp.reg_notif.param.track), &(p_param->track),
@@ -2252,7 +2267,7 @@ static bt_status_t register_notification_rsp_sho_mcast(
 
   /* Send the response. */
   send_metamsg_rsp(
-    p_dev, -1, p_dev->rc_notif[event_id - 1].label,
+    p_dev, idx, p_dev->rc_notif[event_id - 1].label,
     ((type == BTRC_NOTIFICATION_TYPE_INTERIM) ? AVRC_CMD_NOTIF
                                               : AVRC_RSP_CHANGED),
     &avrc_rsp);
@@ -3029,6 +3044,15 @@ static void register_volumechange(uint8_t lbl, btif_rc_device_cb_t* p_dev) {
   rc_transaction_t* p_transaction = NULL;
 
   BTIF_TRACE_DEBUG("%s: label: %d", __func__, lbl);
+  for (int i = 0; i < btif_max_rc_clients; i++) {
+    if (btif_rc_cb.rc_multi_cb[i].rc_connected &&
+       !((btif_rc_cb.rc_multi_cb[i].rc_features & BTA_AV_FEAT_ADV_CTRL) &&
+       (btif_rc_cb.rc_multi_cb[i].rc_features & BTA_AV_FEAT_RCTG)))
+    {
+        BTIF_TRACE_DEBUG("ABS volume is not supported at %d", i);
+        return;
+    }
+  }
 
   avrc_cmd.cmd.opcode = 0x00;
   avrc_cmd.pdu = AVRC_PDU_REGISTER_NOTIFICATION;
@@ -4936,7 +4960,7 @@ static bt_status_t get_player_app_setting_cmd(uint8_t num_attrib,
   avrc_cmd.get_cur_app_val.num_attr = num_attrib;
   avrc_cmd.get_cur_app_val.pdu = AVRC_PDU_GET_CUR_PLAYER_APP_VALUE;
 
-  for (int count = 0; count < num_attrib; count++) {
+  for (int count = 0; (count < num_attrib) && (count < AVRC_MAX_APP_ATTR_SIZE); count++) {
     avrc_cmd.get_cur_app_val.attrs[count] = attrib_ids[count];
   }
 

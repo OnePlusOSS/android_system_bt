@@ -704,4 +704,16 @@ extern bool AVRC_IsValidAvcType(uint8_t pdu_id, uint8_t avc_type);
  ******************************************************************************/
 extern bool AVRC_IsValidPlayerAttr(uint8_t attr);
 
+/*******************************************************************************
+**
+** Function         AVRC_CheckIncomingConn
+**
+** Description      Check if AVRC incoming connection in progress
+**
+**
+** Returns          returns TRUE if incoming connection in progress
+**
+*******************************************************************************/
+extern bool AVRC_CheckIncomingConn(BD_ADDR peer_addr);
+
 #endif /* AVRC_API_H */

@@ -106,6 +106,7 @@ typedef struct {
   int service;
   bool is_slave;
   bool is_device_playing;
+  bool reconfig_pending; /* flag used for codec switch */
 } btif_av_cb_t;
 
 typedef struct {
@@ -126,9 +127,9 @@ static btav_source_callbacks_t* bt_av_src_callbacks = NULL;
 static btav_sink_callbacks_t* bt_av_sink_callbacks = NULL;
 static btif_av_cb_t btif_av_cb[BTIF_AV_NUM_CB] = {
     { 0, {{0}}, 0, 0, 0, 0, std::vector<btav_a2dp_codec_config_t>(), false,
-    false, false, BTIF_AV_STATE_IDLE, BTA_A2DP_SOURCE_SERVICE_ID, false, false},
+    false, false, BTIF_AV_STATE_IDLE, BTA_A2DP_SOURCE_SERVICE_ID, false, false, false},
     { 0, {{0}}, 0, 0, 0, 0, std::vector<btav_a2dp_codec_config_t>(), false,
-    false, false, BTIF_AV_STATE_IDLE, BTA_A2DP_SOURCE_SERVICE_ID, false, false},
+    false, false, BTIF_AV_STATE_IDLE, BTA_A2DP_SOURCE_SERVICE_ID, false, false, false},
 };
 static alarm_t* av_open_on_rc_timer = NULL;
 static btif_sm_event_t idle_rc_event;
@@ -146,6 +147,7 @@ static bool isA2dpSink = false;
 bool bt_split_a2dp_enabled = false;
 bool reconfig_a2dp = false;
 bool btif_a2dp_audio_if_init = false;
+bool codec_cfg_change = false;
 /*SPLITA2DP */
 /* both interface and media task needs to be ready to alloc incoming request */
 #define CHECK_BTAV_INIT()                                                    \
@@ -185,7 +187,8 @@ static void btif_av_update_current_playing_device(int index);
 static void btif_av_check_rc_connection_priority(void *p_data);
 static BD_ADDR bd_null= {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 static bt_status_t connect_int(bt_bdaddr_t* bd_addr, uint16_t uuid);
-
+static bool btif_av_allow_codec_config_change(btav_a2dp_codec_index_t codec_type,
+                                        btav_a2dp_codec_sample_rate_t sample_rate);
 #ifdef AVK_BACKPORT
 void btif_av_request_audio_focus(bool enable);
 #endif
@@ -213,7 +216,6 @@ extern uint16_t btif_dm_get_br_edr_links();
 extern uint16_t btif_dm_get_le_links();
 extern uint16_t btif_hf_is_call_vr_idle();
 extern void btif_a2dp_on_idle(int index);
-
 extern fixed_queue_t* btu_general_alarm_queue;
 
 /*****************************************************************************
@@ -228,6 +230,8 @@ tBTA_AV_HNDL btif_av_get_av_hdl_from_idx(uint8_t idx);
 int btif_av_get_other_connected_idx(int current_index);
 void btif_av_reset_reconfig_flag();
 bool btif_av_is_device_disconnecting();
+tBTA_AV_HNDL btif_av_get_reconfig_dev_hndl();
+void btif_av_reset_codec_reconfig_flag();
 
 const char* dump_av_sm_state_name(btif_av_state_t state) {
   switch (state) {
@@ -506,6 +510,7 @@ static bool btif_av_state_idle_handler(btif_sm_event_t event, void* p_data, int 
       btif_av_cb[index].current_playing = false;
       btif_av_cb[index].is_slave = false;
       btif_av_cb[index].is_device_playing = false;
+      btif_av_cb[index].reconfig_pending = false;
       for (int i = 0; i < btif_max_av_clients; i++)
         btif_av_cb[i].dual_handoff = false;
       osi_property_get("persist.service.bt.a2dp.sink", a2dp_role, "false");
@@ -708,8 +713,6 @@ static bool btif_av_state_idle_handler(btif_sm_event_t event, void* p_data, int 
                     (p_bta_data->open.status == BTA_AV_SUCCESS)) {
         /* if queued PLAY command,  send it now */
         btif_rc_check_handle_pending_play(p_bta_data->open.bd_addr, false);
-        /* if queued PLAY command,  send it now */
-        btif_rc_check_handle_pending_play(p_bta_data->open.bd_addr, false);
         /* Bring up AVRCP connection too */
         BTA_AvOpenRc(btif_av_cb[index].bta_handle);
       }
@@ -838,7 +841,10 @@ static bool btif_av_state_opening_handler(btif_sm_event_t event, void* p_data,
         state = BTAV_CONNECTION_STATE_DISCONNECTED;
         av_state = BTIF_AV_STATE_IDLE;
       }
-
+      if (p_bta_data->open.status != BTA_AV_SUCCESS &&
+              p_bta_data->open.status != BTA_AV_FAIL_SDP) {
+          btif_av_check_and_start_collission_timer(index);
+      }
       /* inform the application of the event */
       btif_report_connection_state(state, &(btif_av_cb[index].peer_bda));
       /* change state to open/idle based on the status */
@@ -876,8 +882,7 @@ static bool btif_av_state_opening_handler(btif_sm_event_t event, void* p_data,
           /* Bring up AVRCP connection too */
           BTA_AvOpenRc(btif_av_cb[index].bta_handle);
         }
-      } else if (p_bta_data->open.status != BTA_AV_FAIL_SDP)
-        btif_av_check_and_start_collission_timer(index);
+      }
       btif_queue_advance();
     } break;
 
@@ -1298,6 +1303,14 @@ static bool btif_av_state_opened_handler(btif_sm_event_t event, void* p_data,
       }
 
       btif_report_source_codec_state(p_data, bt_addr);
+      if (btif_av_is_split_a2dp_enabled()) {
+        if (codec_cfg_change) {
+          codec_cfg_change = false;
+          reconfig_a2dp = TRUE;
+          HAL_CBACK(bt_av_src_callbacks, reconfig_a2dp_trigger_cb, 1,
+                                       &(btif_av_cb[index].peer_bda));
+        }
+      }
     } break;
 
     case BTIF_AV_DISCONNECT_REQ_EVT: {
@@ -1362,6 +1375,7 @@ static bool btif_av_state_opened_handler(btif_sm_event_t event, void* p_data,
         btif_av_cb[index].flags &= ~BTIF_AV_FLAG_PENDING_START;
         btif_a2dp_command_ack(A2DP_CTRL_ACK_FAILURE);
       }
+      btif_av_cb[index].reconfig_pending = false;
     } break;
 
     case BTIF_AV_CONNECT_REQ_EVT: {
@@ -1482,6 +1496,7 @@ static bool btif_av_state_started_handler(btif_sm_event_t event, void* p_data,
       break;
 
     case BTIF_AV_SOURCE_CONFIG_REQ_EVT:
+      btif_av_cb[index].reconfig_pending = true;
       btif_update_source_codec(p_data);
       break;
 
@@ -1495,6 +1510,14 @@ static bool btif_av_state_started_handler(btif_sm_event_t event, void* p_data,
 
 
       btif_report_source_codec_state(p_data, bt_addr);
+      if (btif_av_is_split_a2dp_enabled()) {
+        if (codec_cfg_change) {
+          codec_cfg_change = false;
+          reconfig_a2dp = TRUE;
+          HAL_CBACK(bt_av_src_callbacks, reconfig_a2dp_trigger_cb, 1,
+                                          &(btif_av_cb[index].peer_bda));
+        }
+      }
       break;
 
     /* fixme -- use suspend = true always to work around issue with BTA AV */
@@ -1636,22 +1659,10 @@ static bool btif_av_state_started_handler(btif_sm_event_t event, void* p_data,
 
     case BTA_AV_STOP_EVT:
       btif_av_cb[index].flags |= BTIF_AV_FLAG_PENDING_STOP;
-      btif_av_cb[index].current_playing = false;
-      if (btif_av_is_connected_on_other_idx(index)) {
-        if (!btif_av_is_split_a2dp_enabled()) {
-          if (enable_multicast == false) {
-            APPL_TRACE_WARNING("other Idx is connected, move to SUSPENDED");
-            btif_rc_send_pause_command(&btif_av_cb[index].peer_bda);
-            btif_a2dp_on_stopped(&p_av->suspend);
-          }
-        }
-        else
-          btif_a2dp_on_stopped(&p_av->suspend);
-      }
-      else {
-        APPL_TRACE_WARNING("Stop the AV Data channel as no connection is present");
-        btif_a2dp_on_stopped(&p_av->suspend);
-      }
+      if (!btif_av_cb[index].reconfig_pending)
+        btif_av_cb[index].current_playing = false;
+      BTIF_TRACE_DEBUG("Stop the AV Data channel");
+      btif_a2dp_on_stopped(&p_av->suspend);
       btif_av_cb[index].is_device_playing = false;
       btif_report_audio_state(BTAV_AUDIO_STATE_STOPPED, &(btif_av_cb[index].peer_bda));
       // if stop was successful, change state to open
@@ -1659,7 +1670,7 @@ static bool btif_av_state_started_handler(btif_sm_event_t event, void* p_data,
         btif_sm_change_state(btif_av_cb[index].sm_handle, BTIF_AV_STATE_OPENED);
 
       if (btif_av_is_split_a2dp_enabled() &&
-        btif_av_is_connected_on_other_idx(index)) {
+        btif_av_is_connected_on_other_idx(index) && !reconfig_a2dp) {
         /*Fake handoff state to switch streaming to other coddeced
           device */
         btif_av_cb[index].dual_handoff = true;
@@ -1779,7 +1790,22 @@ static void btif_av_handle_event(uint16_t event, char* p_param) {
       return;
 
     case BTIF_AV_CONNECT_REQ_EVT:
+      break;
+
+    case BTIF_AV_SOURCE_CONFIG_REQ_EVT:
+      //if (btif_av_get_num_connected_devices() > 1) {
+        BTIF_TRACE_DEBUG("BTIF_AV_SOURCE_CONFIG_REQ_EVT more than one device connected");
+        if (btif_av_stream_started_ready())
+          index = btif_av_get_latest_playing_device_idx();
+        else
+          index = btif_av_get_latest_device_idx_to_start();
+      //}
+      break;
     case BTIF_AV_SOURCE_CONFIG_UPDATED_EVT:
+      if (p_param != NULL) {
+        bt_addr = (bt_bdaddr_t *)p_param;
+        index = btif_av_idx_by_bdaddr(bt_addr->address);
+      }
       break;
 
     case BTIF_AV_DISCONNECT_REQ_EVT:
@@ -1833,9 +1859,32 @@ static void btif_av_handle_event(uint16_t event, char* p_param) {
       return;
 
     case BTA_AV_PENDING_EVT:
-      index = HANDLE_TO_INDEX(p_bta_data->pend.hndl);
-      break;
-
+        /* In race conditions, outgoing and incoming connections
+        * at same time check for BD address at index and if it
+        * does not match then check for first avialable index.
+        */
+        index = HANDLE_TO_INDEX(p_bta_data->pend.hndl);
+        if (index >= 0 && index < btif_max_av_clients &&
+            memcmp (((tBTA_AV*)p_bta_data)->pend.bd_addr,
+            &(btif_av_cb[index].peer_bda),
+            sizeof(btif_av_cb[index].peer_bda)) == 0)
+       {
+            BTIF_TRACE_EVENT("incomming connection at index %d", index);
+       }
+       else
+       {
+           index = btif_av_idx_by_bdaddr(bd_null);
+           if (index >= btif_max_av_clients)
+           {
+               BTIF_TRACE_ERROR("No free SCB available");
+               BTA_AvDisconnect(p_bta_data->pend.bd_addr);
+           }
+           else
+           {
+               BTIF_TRACE_EVENT("updated index for connection %d", index);
+           }
+       }
+       break;
     case BTA_AV_REJECT_EVT:
       index = HANDLE_TO_INDEX(p_bta_data->reject.hndl);
       break;
@@ -1996,8 +2045,18 @@ int btif_av_get_latest_device_idx_to_start() {
     if (btif_av_cb[i].current_playing)
       break;
   if (i == btif_max_av_clients) {
-    BTIF_TRACE_ERROR("Play on default");
-    i = 0; // play on default
+    BTIF_TRACE_ERROR("Play on default opened device");
+    for (i = 0; i < btif_max_av_clients; i++) {
+      btif_sm_state_t state = BTIF_AV_STATE_IDLE;
+      //i = 0; // play on default
+      state = btif_sm_get_state(btif_av_cb[i].sm_handle);
+      if (state == BTIF_AV_STATE_OPENED)
+        break;
+    }
+  }
+  if (i == btif_max_av_clients) {
+    BTIF_TRACE_ERROR("No valid AV device found, play on default");
+    i = 0;
   }
   return i;
 }
@@ -2577,6 +2636,23 @@ static bt_status_t codec_config_src(
         __func__, cp.codec_type, cp.codec_priority, cp.sample_rate,
         cp.bits_per_sample, cp.channel_mode, cp.codec_specific_1,
         cp.codec_specific_2, cp.codec_specific_3, cp.codec_specific_4);
+
+        if (btif_av_is_split_a2dp_enabled()) {
+          if (!btif_av_allow_codec_config_change(cp.codec_type,cp.sample_rate)) {
+            int idx;
+            if (btif_av_stream_started_ready())
+              idx = btif_av_get_latest_playing_device_idx();
+            else
+              idx = btif_av_get_latest_device_idx_to_start();
+            bt_bdaddr_t bt_addr;
+            bdcpy(bt_addr.address,btif_av_cb[idx].peer_bda.address);
+            btif_transfer_context(btif_av_handle_event, BTIF_AV_SOURCE_CONFIG_UPDATED_EVT,
+                                  (char *)&bt_addr,sizeof(bt_bdaddr_t), NULL);
+            return BT_STATUS_SUCCESS;
+          }
+          else
+            codec_cfg_change = true;
+        }
     btif_transfer_context(btif_av_handle_event, BTIF_AV_SOURCE_CONFIG_REQ_EVT,
                           reinterpret_cast<char*>(&cp), sizeof(cp), NULL);
   }
@@ -3472,5 +3548,58 @@ bool btif_av_is_device_disconnecting() {
 void btif_av_reset_reconfig_flag() {
   BTIF_TRACE_DEBUG("%s",__func__);
   reconfig_a2dp = FALSE;
+}
+
+bool btif_av_allow_codec_config_change(btav_a2dp_codec_index_t codec_type,
+          btav_a2dp_codec_sample_rate_t sample_rate) {
+  BTIF_TRACE_DEBUG("%s",__func__);
+  /* Only 48khz sampling rate is supported in Split A2dp mode, disregard
+   * codec switch request for sample rate change
+   * LDAC is not supported in Split A2dp currently, disregard LDAC switch req
+  */
+  if (codec_type == BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC ||
+      (sample_rate > 0 && sample_rate != BTAV_A2DP_CODEC_SAMPLE_RATE_48000)) {
+      BTIF_TRACE_DEBUG("config not supported codec_type = %d, sample_rate = %d",
+                        codec_type, sample_rate)
+      return false; //Only 48k is supported in split mode
+  }
+  return true;
+}
+
+/******************************************************************************
+**
+** Function         btif_av_get_reconfig_dev_hndl
+**
+** Description     Retrieve the bta handle for the device codec switch is
+**                 triggered in the middle of streaming.
+**
+** Returns         BTA HANDLE if codec switch triggered during streaming
+********************************************************************************/
+tBTA_AV_HNDL btif_av_get_reconfig_dev_hndl() {
+  int i = 0;
+  BTIF_TRACE_DEBUG("%s",__func__);
+  for (i = 0 ; i < btif_max_av_clients; i++) {
+    if (btif_av_cb[i].reconfig_pending)
+        return btif_av_cb[i].bta_handle;
+  }
+  return 0;
+}
+
+/******************************************************************************
+**
+** Function        btif_av_reset_codec_reconfig_flag
+**
+** Description     Reset codec reconfig flag if avdtp reconfig is not triggered
+**                 for user provided codec config
+**
+** Returns         void
+********************************************************************************/
+void btif_av_reset_codec_reconfig_flag() {
+  int i;
+  BTIF_TRACE_DEBUG("%s",__func__);
+  for (i = 0; i < btif_max_av_clients; i++) {
+    if (btif_av_cb[i].reconfig_pending)
+     btif_av_cb[i].reconfig_pending = false;
+  }
 }
 /*SPLITA2DP*/

@@ -44,7 +44,7 @@
 
 /* Codec negotiation timeout */
 #ifndef BTA_AG_CODEC_NEGOTIATION_TIMEOUT_MS
-#define BTA_AG_CODEC_NEGOTIATION_TIMEOUT_MS (3 * 1000) /* 3 seconds */
+#define BTA_AG_CODEC_NEGOTIATION_TIMEOUT_MS (5 * 1000) /* 3 seconds */
 #endif
 
 extern fixed_queue_t* btu_bta_alarm_queue;
@@ -166,13 +166,16 @@ static void bta_ag_sco_disc_cback(uint16_t sco_idx) {
       /* Bypass vendor specific and voice settings if enhanced eSCO supported */
       if (!(controller_get_interface()
                 ->supports_enhanced_setup_synchronous_connection())) {
+#if (BLUETOOTH_QTI_SW == FALSE) /* This change is not needed.*/
         BTM_WriteVoiceSettings(BTM_VOICE_SETTING_CVSD);
+#endif
       }
 
       /* If SCO open was initiated by AG and failed for mSBC T2, try mSBC T1
        * 'Safe setting' first. If T1 also fails, try CVSD */
       if (bta_ag_sco_is_opening(bta_ag_cb.sco.p_curr_scb)) {
         bta_ag_cb.sco.p_curr_scb->state = BTA_AG_SCO_CODEC_ST;
+#if (BLUETOOTH_QTI_SW == FALSE) /* This change is not needed.*/
         if (bta_ag_cb.sco.p_curr_scb->codec_msbc_settings ==
             BTA_AG_SCO_MSBC_SETTINGS_T2) {
           APPL_TRACE_WARNING(
@@ -180,11 +183,14 @@ static void bta_ag_sco_disc_cback(uint16_t sco_idx) {
               __func__);
           bta_ag_cb.sco.p_curr_scb->codec_msbc_settings =
               BTA_AG_SCO_MSBC_SETTINGS_T1;
-        } else {
+        } else
+#else
+        {
           APPL_TRACE_WARNING(
               "%s: eSCO/SCO failed to open, falling back to CVSD", __func__);
           bta_ag_cb.sco.p_curr_scb->codec_fallback = true;
         }
+#endif
       }
     } else if (bta_ag_sco_is_opening(bta_ag_cb.sco.p_curr_scb)) {
       APPL_TRACE_ERROR("%s: eSCO/SCO failed to open, no more fall back",
@@ -482,10 +488,12 @@ static void bta_ag_create_pending_sco(tBTA_AG_SCB* p_scb, bool is_local) {
     /* Bypass voice settings if enhanced SCO setup command is supported */
     if (!(controller_get_interface()
               ->supports_enhanced_setup_synchronous_connection())) {
+#if (BLUETOOTH_QTI_SW == FALSE) /* These changes are not needed*/
       if (esco_codec == BTA_AG_CODEC_MSBC)
         BTM_WriteVoiceSettings(BTM_VOICE_SETTING_TRANS);
       else
         BTM_WriteVoiceSettings(BTM_VOICE_SETTING_CVSD);
+#endif
     }
 
 #if (BTM_SCO_HCI_INCLUDED == TRUE)
@@ -648,8 +656,16 @@ static void bta_ag_sco_event(tBTA_AG_SCB* p_scb, uint8_t event) {
           bta_ag_remove_sco(p_scb, false);
 
           /* start codec negotiation */
-          p_sco->state = BTA_AG_SCO_CODEC_ST;
-          bta_ag_codec_negotiate(p_scb);
+          if (p_scb->peer_codecs != BTA_AG_CODEC_NONE)
+          {
+              p_sco->state = BTA_AG_SCO_CODEC_ST;
+              bta_ag_codec_negotiate(p_scb);
+          }
+          else
+          {
+              bta_ag_create_sco(p_scb, TRUE);
+              p_sco->state = BTA_AG_SCO_OPENING_ST;
+          }
           break;
 
         case BTA_AG_SCO_SHUTDOWN_E:
@@ -761,13 +777,17 @@ static void bta_ag_sco_event(tBTA_AG_SCB* p_scb, uint8_t event) {
           break;
 
         case BTA_AG_SCO_SHUTDOWN_E:
-          /* If not opening scb, just close it */
-          if (p_scb != p_sco->p_curr_scb) {
-            /* remove listening connection */
-            bta_ag_remove_sco(p_scb, false);
-          } else
-            p_sco->state = BTA_AG_SCO_SHUTTING_ST;
+          /* remove listening connection */
+          bta_ag_remove_sco(p_scb, FALSE);
 
+          if (p_scb == p_sco->p_curr_scb) {
+            p_sco->p_curr_scb = NULL;
+          }
+
+          /* If last SCO instance then finish shutting down */
+          if (!bta_ag_other_scb_open(p_scb)) {
+            p_sco->state = BTA_AG_SCO_SHUTDOWN_ST;
+          }
           break;
 
         case BTA_AG_SCO_CONN_OPEN_E:
@@ -801,13 +821,17 @@ static void bta_ag_sco_event(tBTA_AG_SCB* p_scb, uint8_t event) {
           break;
 
         case BTA_AG_SCO_SHUTDOWN_E:
-          /* If not opening scb, just close it */
-          if (p_scb != p_sco->p_curr_scb) {
-            /* remove listening connection */
-            bta_ag_remove_sco(p_scb, false);
-          } else
-            p_sco->state = BTA_AG_SCO_SHUTTING_ST;
+          /* remove listening connection */
+          bta_ag_remove_sco(p_scb, FALSE);
 
+          if (p_scb == p_sco->p_curr_scb) {
+            p_sco->p_curr_scb = NULL;
+          }
+
+          /* If last SCO instance then finish shutting down */
+          if (!bta_ag_other_scb_open(p_scb)) {
+            p_sco->state = BTA_AG_SCO_SHUTDOWN_ST;
+          }
           break;
 
         case BTA_AG_SCO_CONN_OPEN_E:
@@ -971,9 +995,17 @@ static void bta_ag_sco_event(tBTA_AG_SCB* p_scb, uint8_t event) {
           break;
 
         case BTA_AG_SCO_CONN_CLOSE_E:
-          /* start codec negotiation */
-          p_sco->state = BTA_AG_SCO_CODEC_ST;
-          bta_ag_codec_negotiate(p_scb);
+          if (p_scb->peer_codecs != BTA_AG_CODEC_NONE)
+          {
+              /* start codec negotiation */
+              p_sco->state = BTA_AG_SCO_CODEC_ST;
+              bta_ag_codec_negotiate(p_scb);
+          }
+          else
+          {
+              bta_ag_create_sco(p_scb, TRUE);
+              p_sco->state = BTA_AG_SCO_OPENING_ST;
+          }
           break;
 
         case BTA_AG_SCO_LISTEN_E:
@@ -1019,11 +1051,20 @@ static void bta_ag_sco_event(tBTA_AG_SCB* p_scb, uint8_t event) {
           bta_ag_create_sco(p_scb, false);
           bta_ag_remove_sco(p_sco->p_xfer_scb, false);
 
-          /* start codec negotiation */
-          p_sco->state = BTA_AG_SCO_CODEC_ST;
-          tBTA_AG_SCB* p_cn_scb = p_sco->p_xfer_scb;
-          p_sco->p_xfer_scb = NULL;
-          bta_ag_codec_negotiate(p_cn_scb);
+          if (p_scb->peer_codecs != BTA_AG_CODEC_NONE)
+          {
+              /* start codec negotiation */
+              p_sco->state = BTA_AG_SCO_CODEC_ST;
+              tBTA_AG_SCB* p_cn_scb = p_sco->p_xfer_scb;
+              p_sco->p_xfer_scb = NULL;
+              bta_ag_codec_negotiate(p_cn_scb);
+          }
+          else
+          {
+              bta_ag_create_sco(p_sco->p_xfer_scb, TRUE);
+              p_sco->p_xfer_scb = NULL;
+              p_sco->state = BTA_AG_SCO_OPENING_ST;
+          }
           break;
         }
 

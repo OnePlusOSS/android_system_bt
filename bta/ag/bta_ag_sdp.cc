@@ -22,7 +22,9 @@
  *  operations.
  *
  ******************************************************************************/
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
 #include <string.h>
 
 #include "bt_common.h"
@@ -35,6 +37,7 @@
 #include "sdp_api.h"
 #include "utl.h"
 #include "device/include/interop_config.h"
+#include "bt_utils.h"
 
 /* Number of protocol elements in protocol element list. */
 #define BTA_AG_NUM_PROTO_ELEMS 2
@@ -155,7 +158,7 @@ bool bta_ag_add_record(uint16_t service_uuid, char* p_service_name, uint8_t scn,
   /* add profile descriptor list */
   if (service_uuid == UUID_SERVCLASS_AG_HANDSFREE) {
     profile_uuid = UUID_SERVCLASS_HF_HANDSFREE;
-    version = BTA_HFP_VERSION;
+    version = HFP_VERSION_1_6;
   } else {
     profile_uuid = UUID_SERVCLASS_HEADSET;
     version = HSP_VERSION_1_2;
@@ -297,9 +300,10 @@ bool bta_ag_sdp_find_attr(tBTA_AG_SCB* p_scb, tBTA_SERVICE_MASK service) {
     p_scb->peer_version = HFP_VERSION_1_1; /* Default version */
   } else if (service & BTA_HSP_SERVICE_MASK && p_scb->role == BTA_AG_INT) {
     uuid = UUID_SERVCLASS_HEADSET_HS;
-    p_scb->peer_version = HSP_VERSION_1_2; /* Default version */
+    p_scb->peer_version = 0x0100; /* Default version */
   } else {
-    return result;
+    uuid = UUID_SERVCLASS_HEADSET_HS;
+    p_scb->peer_version = HSP_VERSION_1_2; /* Default version */
   }
 
   /* loop through all records we found */
@@ -308,9 +312,8 @@ bool bta_ag_sdp_find_attr(tBTA_AG_SCB* p_scb, tBTA_SERVICE_MASK service) {
     p_rec = SDP_FindServiceInDb(p_scb->p_disc_db, uuid, p_rec);
     if (p_rec == NULL) {
       if (uuid == UUID_SERVCLASS_HEADSET_HS) {
-        /* Search again in case the peer device uses the old HSP UUID */
+        /* Search again in case the peer device is HSP v1.0 */
         uuid = UUID_SERVCLASS_HEADSET;
-        p_scb->peer_version = HSP_VERSION_1_0;
         p_rec = SDP_FindServiceInDb(p_scb->p_disc_db, uuid, p_rec);
         if (p_rec == NULL) {
           break;
@@ -329,10 +332,7 @@ bool bta_ag_sdp_find_attr(tBTA_AG_SCB* p_scb, tBTA_SERVICE_MASK service) {
     }
 
     /* get profile version (if failure, version parameter is not updated) */
-    if (!SDP_FindProfileVersionInRec(p_rec, uuid, &p_scb->peer_version)) {
-      APPL_TRACE_WARNING("%s: Get peer_version failed, using default 0x%04x",
-                         __func__, p_scb->peer_version);
-    }
+    SDP_FindProfileVersionInRec(p_rec, uuid, &p_scb->peer_version);
 
     /* get features if HFP */
     if (service & BTA_HFP_SERVICE_MASK) {
@@ -383,7 +383,7 @@ bool bta_ag_sdp_find_attr(tBTA_AG_SCB* p_scb, tBTA_SERVICE_MASK service) {
  *
  ******************************************************************************/
 void bta_ag_do_disc(tBTA_AG_SCB* p_scb, tBTA_SERVICE_MASK service) {
-  tSDP_UUID uuid_list[1];
+  tSDP_UUID uuid_list[2];
   uint16_t num_uuid = 1;
   uint16_t attr_list[4];
   uint8_t num_attr;
@@ -413,25 +413,34 @@ void bta_ag_do_disc(tBTA_AG_SCB* p_scb, tBTA_SERVICE_MASK service) {
     attr_list[2] = ATTR_ID_BT_PROFILE_DESC_LIST;
     attr_list[3] = ATTR_ID_REMOTE_AUDIO_VOLUME_CONTROL;
     num_attr = 4;
-    // Although UUID_SERVCLASS_HEADSET_HS (0x1131) is to be used in HSP 1.2,
-    // some HSP 1.2 implementations, such as PTS, still use
-    // UUID_SERVCLASS_HEADSET (0x1108) to store its service record. However,
-    // most of such devices are HSP 1.0 devices.
+
+    uuid_list[0].uu.uuid16 = UUID_SERVCLASS_HEADSET; /* Legacy from HSP v1.0 */
     if (p_scb->hsp_version >= HSP_VERSION_1_2) {
-      uuid_list[0].uu.uuid16 = UUID_SERVCLASS_HEADSET_HS;
-    } else {
-      uuid_list[0].uu.uuid16 = UUID_SERVCLASS_HEADSET;
+      uuid_list[1].uu.uuid16 = UUID_SERVCLASS_HEADSET_HS;
+      num_uuid = 2;
     }
   }
-  /* HSP acceptor; no discovery */
+  /* HSP acceptor; get features */
   else {
-    return;
+    attr_list[0] = ATTR_ID_SERVICE_CLASS_ID_LIST;
+    attr_list[1] = ATTR_ID_PROTOCOL_DESC_LIST;
+    attr_list[2] = ATTR_ID_BT_PROFILE_DESC_LIST;
+    attr_list[3] = ATTR_ID_REMOTE_AUDIO_VOLUME_CONTROL;
+    num_attr = 4;
+
+    uuid_list[0].uu.uuid16 = UUID_SERVCLASS_HEADSET;        /* Legacy from HSP v1.0 */
+    if (p_scb->hsp_version >= HSP_VERSION_1_2)
+    {
+      uuid_list[1].uu.uuid16 = UUID_SERVCLASS_HEADSET_HS;
+      num_uuid = 2;
+    }
   }
 
   /* allocate buffer for sdp database */
   p_scb->p_disc_db = (tSDP_DISCOVERY_DB*)osi_malloc(BTA_AG_DISC_BUF_SIZE);
   /* set up service discovery database; attr happens to be attr_list len */
   uuid_list[0].len = LEN_UUID_16;
+  uuid_list[1].len = LEN_UUID_16;
   db_inited = SDP_InitDiscoveryDb(p_scb->p_disc_db, BTA_AG_DISC_BUF_SIZE,
                                   num_uuid, uuid_list, num_attr, attr_list);
 
