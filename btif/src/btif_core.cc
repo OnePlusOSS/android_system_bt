@@ -391,7 +391,7 @@ void btif_enable_bluetooth_evt(tBTA_STATUS status) {
   char val[PROPERTY_VALUE_MAX] = "";
   int val_size = 0;
   if ((btif_config_get_str("Adapter", "Address", val, &val_size) == 0) ||
-      strcmp(bdstr, val) == 0) {
+      strcmp(bdstr, val)) {
     // This address is not present in the config file, save it there.
     BTIF_TRACE_WARNING("%s: Saving the Adapter Address", __func__);
     btif_config_set_str("Adapter", "Address", bdstr);

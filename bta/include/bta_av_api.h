@@ -247,8 +247,9 @@ typedef uint8_t tBTA_AV_ERR;
 #define BTA_AV_RC_BROWSE_CLOSE_EVT 24   /* remote control channel closed */
 #define BTA_AV_ROLE_CHANGED_EVT 25
 #define BTA_AV_RC_COLL_DETECTED_EVT 26  /* RC channel collission detected */
+#define BTA_AV_DELAY_REPORT_EVT 27      /* update delay report */
 /* Max BTA event */
-#define BTA_AV_MAX_EVT 27
+#define BTA_AV_MAX_EVT 28
 
 typedef uint8_t tBTA_AV_EVT;
 
@@ -431,6 +432,15 @@ typedef struct
   tBTA_AV_HNDL hndl; /* Handle associated with role change event */
 } tBTA_AV_ROLE_CHANGED;
 
+typedef uint16_t tBTA_AV_LATENCY;
+
+/* data associated with BTA_AV_DELAY_REPORT_EVT */
+typedef struct {
+  BD_ADDR bd_addr;
+  tBTA_AV_HNDL hndl;
+  tBTA_AV_LATENCY sink_delay;
+} tBTA_AV_DELAY_RPT;
+
 /* union of data associated with AV callback */
 typedef union {
   tBTA_AV_CHNL chnl;
@@ -458,6 +468,7 @@ typedef union {
   tBTA_AV_RC_FEAT rc_feat;
   tBTA_AV_STATUS status;
   tBTA_AV_ROLE_CHANGED role_changed;
+  tBTA_AV_DELAY_RPT delay_rpt;
 } tBTA_AV;
 
 typedef struct {

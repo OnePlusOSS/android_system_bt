@@ -459,5 +459,9 @@ void bta_hf_client_svc_conn_open(tBTA_HF_CLIENT_DATA* p_data) {
     evt.conn.chld_feat = client_cb->chld_features;
 
     bta_hf_client_app_callback(BTA_HF_CLIENT_CONN_EVT, &evt);
+
+    /* [HF_AUDIO] Once SLC is established, always initialize SCO listener
+       to accept an incoming SCO connection. */
+    bta_hf_client_sco_listen(p_data);
   }
 }

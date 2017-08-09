@@ -45,6 +45,7 @@
 // |codec_index| and |codec_priority| are the codec type and priority to use
 // for the initialization.
 bool mA2dp_offload_status = false;
+bool offload_capability = false;
 bool sbc_offload = false;
 bool aac_offload = false;
 bool aptx_offload = false;
@@ -1303,6 +1304,9 @@ void A2DP_SetOffloadStatus(bool offload_status, char *offload_cap) {
   LOG_INFO(LOG_TAG,"A2dp_SetOffloadStatus:status = %d",
                      offload_status);
   mA2dp_offload_status = offload_status;
+  offload_capability = true;
+  if (strcmp(offload_cap,"false") == 0) offload_capability = false;
+
   if (mA2dp_offload_status) {
     tok = strtok_r((char*)offload_cap, "-", &tmp_token);
     while (tok != NULL)
@@ -1331,7 +1335,7 @@ bool A2DP_GetOffloadStatus() {
 
 bool A2DP_IsCodecEnabledInOffload(btav_a2dp_codec_index_t codec_index) {
   bool codec_status = false;
-  if (mA2dp_offload_status) {
+  if (offload_capability) {
     switch (codec_index) {
     case BTAV_A2DP_CODEC_INDEX_SOURCE_SBC:
       codec_status = sbc_offload;
@@ -1353,6 +1357,12 @@ bool A2DP_IsCodecEnabledInOffload(btav_a2dp_codec_index_t codec_index) {
     case BTAV_A2DP_CODEC_INDEX_SINK_MAX:
       break;
     }
+  } else {
+    if (codec_index != BTAV_A2DP_CODEC_INDEX_SOURCE_LDAC &&
+      codec_index != BTAV_A2DP_CODEC_INDEX_SINK_MAX &&
+      codec_index != BTAV_A2DP_CODEC_INDEX_SOURCE_MAX)
+      LOG_INFO(LOG_TAG,"SplitA2dp enabled, but offload capability not set");
+      return true;
   }
   return codec_status;
 }

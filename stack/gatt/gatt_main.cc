@@ -388,7 +388,7 @@ bool gatt_act_connect(tGATT_REG* p_reg, BD_ADDR bd_addr,
 
   if (ret) {
     if (!opportunistic)
-      gatt_update_app_use_link_flag(p_reg->gatt_if, p_tcb, true, false);
+      gatt_update_app_use_link_flag(p_reg->gatt_if, p_tcb, true, true);
     else
       GATT_TRACE_DEBUG(
           "%s: connection is opportunistic, not updating app usage", __func__);

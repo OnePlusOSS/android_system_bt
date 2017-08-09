@@ -111,6 +111,14 @@ static void bta_hf_client_sco_conn_rsp(tBTA_HF_CLIENT_CB* client_cb,
     if (p_data->link_type == BTM_LINK_TYPE_SCO) {
       resp = esco_parameters_for_codec(ESCO_CODEC_CVSD);
     } else {
+      /* [HF_AUDIO] client_cb->negotiated_codec is initialized with value BTM_SCO_CODEC_NONE.
+         If supports WBS, this value may be updated in bta_hf_client_handle_bcs(). If not, the
+         value remains to be BTM_SCO_CODEC_NONE, so set client_cb->negotiated_codec to
+         BTA_AG_CODEC_CVSD for esco while WBS is not supported. */
+      if (client_cb->negotiated_codec == BTM_SCO_CODEC_NONE) {
+        client_cb->negotiated_codec = BTA_AG_CODEC_CVSD;
+      }
+
       if (client_cb->negotiated_codec == BTA_AG_CODEC_CVSD)
         resp = esco_parameters_for_codec(ESCO_CODEC_CVSD);
       if (client_cb->negotiated_codec == BTA_AG_CODEC_MSBC)
@@ -601,6 +609,10 @@ void bta_hf_client_sco_conn_close(tBTA_HF_CLIENT_DATA* p_data) {
     client_cb->sco_close_rfc = false;
     bta_hf_client_rfc_do_close(p_data);
   }
+
+  /* [HF_AUDIO] Once current SCO is closed, always initialize SCO listener
+     to accept an incoming SCO connection. */
+  bta_hf_client_sco_listen(p_data);
 }
 
 /*******************************************************************************

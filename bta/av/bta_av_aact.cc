@@ -148,7 +148,7 @@ const tBTA_AV_SACT bta_av_a2dp_action[] = {
     bta_av_cco_close,       /* BTA_AV_CCO_CLOSE */
     bta_av_switch_role,     /* BTA_AV_SWITCH_ROLE */
     bta_av_role_res,        /* BTA_AV_ROLE_RES */
-    bta_av_delay_co,        /* BTA_AV_DELAY_CO */
+    bta_av_delay_rpt,        /* BTA_AV_DELAY_RPT */
     bta_av_open_at_inc,     /* BTA_AV_OPEN_AT_INC */
     bta_av_offload_req,     /* BTA_AV_OFFLOAD_REQ */
     bta_av_offload_rsp,     /* BTA_AV_OFFLOAD_RSP */
@@ -906,16 +906,26 @@ void bta_av_role_res(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
 /*******************************************************************************
  *
- * Function         bta_av_delay_co
+ * Function         bta_av_delay_rpt
  *
- * Description      Call the delay call-out function to report the delay report
- *                  from SNK
+ * Description      Handle the delay report event from SNK
  *
  * Returns          void
  *
  ******************************************************************************/
-void bta_av_delay_co(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
+void bta_av_delay_rpt(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
+  tBTA_AV_DELAY_RPT delay_rpt;
+
   p_scb->p_cos->delay(p_scb->hndl, p_data->str_msg.msg.delay_rpt_cmd.delay);
+  bdcpy(delay_rpt.bd_addr, p_data->str_msg.bd_addr);
+  delay_rpt.hndl = p_scb->hndl;
+  /* Sink report delay value in 1/10 milliseconds, BTA layer report delay value
+   * in milliseconds to upper layer */
+  delay_rpt.sink_delay = (p_data->str_msg.msg.delay_rpt_cmd.delay) / 10;
+
+  APPL_TRACE_DEBUG("%s: delay report value: %d, handle: %d", __func__,
+                                      delay_rpt.sink_delay, delay_rpt.hndl);
+  (*bta_av_cb.p_cback)(BTA_AV_DELAY_REPORT_EVT, (tBTA_AV *) &delay_rpt);
 }
 
 /*******************************************************************************
@@ -1319,6 +1329,8 @@ void bta_av_setconfig_rsp(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
     if (p_scb->cur_psc_mask & AVDT_PSC_DELAY_RPT)
       p_scb->avdt_version = AVDT_VERSION_SYNC;
+    else
+      p_scb->avdt_version = AVDT_VERSION;
 
     /* For any codec used by the SNK as INT, discover req is not sent in bta_av_config_ind.
      * This is done since we saw an IOT issue with APTX codec. Thus, we now take same

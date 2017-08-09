@@ -774,7 +774,7 @@ extern void bta_av_set_use_rc(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);
 extern void bta_av_cco_close(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);
 extern void bta_av_switch_role(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);
 extern void bta_av_role_res(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);
-extern void bta_av_delay_co(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);
+extern void bta_av_delay_rpt(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);
 extern void bta_av_open_at_inc(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);
 extern void bta_av_offload_req(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);
 extern void bta_av_offload_rsp(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data);

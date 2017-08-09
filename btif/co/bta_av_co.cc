@@ -1374,7 +1374,7 @@ void bta_av_co_init(
   bta_av_co_cb.codecs = new A2dpCodecs(codec_priorities);
 /* SPLITA2DP */
   bool a2dp_offload = btif_av_is_split_a2dp_enabled();
-  osi_property_get("persist.bt.a2dp_offload_cap", value, "false");
+  osi_property_get("persist.vendor.bt.a2dp_offload_cap", value, "false");
   A2DP_SetOffloadStatus(a2dp_offload, value);
 /* SPLITA2DP */
   bool isMcastSupported = btif_av_is_multicast_supported();

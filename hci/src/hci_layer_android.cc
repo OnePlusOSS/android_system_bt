@@ -48,6 +48,8 @@ extern void hci_event_received(BT_HDR* packet);
 extern void acl_event_received(BT_HDR* packet);
 extern void sco_data_received(BT_HDR* packet);
 
+static std::mutex bthci_mutex;
+
 android::sp<IBluetoothHci> btHci;
 
 class BluetoothHciCallbacks : public IBluetoothHciCallbacks {
@@ -114,12 +116,20 @@ void hci_initialize() {
 }
 
 void hci_close() {
+  std::lock_guard<std::mutex> lock(bthci_mutex);
   btHci->close();
   btHci = nullptr;
 }
 
 void hci_transmit(BT_HDR* packet) {
   HciPacket data;
+  std::lock_guard<std::mutex> lock(bthci_mutex);
+
+  if(btHci == nullptr) {
+    LOG_INFO(LOG_TAG, "%s: Link with Bluetooth HIDL service is closed", __func__);
+    return;
+  }
+
   data.setToExternal(packet->data + packet->offset, packet->len);
 
   uint16_t event = packet->event & MSG_EVT_MASK;

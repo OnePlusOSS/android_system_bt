@@ -760,6 +760,7 @@ void handle_rc_connect(tBTA_AV_RC_OPEN* p_rc_open) {
  ***************************************************************************/
 void handle_rc_disconnect(tBTA_AV_RC_CLOSE* p_rc_close) {
   btif_rc_device_cb_t* p_dev = NULL;
+  tBTA_AV_FEAT rc_features = 0;
   BTIF_TRACE_DEBUG("%s: rc_handle: %d", __func__, p_rc_close->rc_handle);
 
   p_dev = btif_rc_get_device_by_handle(p_rc_close->rc_handle);
@@ -788,7 +789,7 @@ void handle_rc_disconnect(tBTA_AV_RC_CLOSE* p_rc_close) {
     p_dev->rc_state = BTRC_CONNECTION_STATE_DISCONNECTED;
 
     memset(p_dev->rc_notif, 0, sizeof(p_dev->rc_notif));
-
+    rc_features = p_dev->rc_features;
     p_dev->rc_features = 0;
     p_dev->rc_vol_label = MAX_LABEL;
     p_dev->rc_volume = MAX_VOLUME;
@@ -806,7 +807,7 @@ void handle_rc_disconnect(tBTA_AV_RC_CLOSE* p_rc_close) {
     HAL_CBACK(bt_rc_ctrl_callbacks, connection_state_cb, false, false,
               &rc_addr);
   }
-  if (p_dev->rc_features & BTA_AV_FEAT_RCCT) {
+  if (rc_features & BTA_AV_FEAT_RCCT) {
     HAL_CBACK(bt_rc_callbacks, connection_state_cb, false, false, &rc_addr);
   }
 }
@@ -2267,7 +2268,7 @@ static bt_status_t register_notification_rsp_sho_mcast(
 
   /* Send the response. */
   send_metamsg_rsp(
-    p_dev, idx, p_dev->rc_notif[event_id - 1].label,
+    p_dev, -1, p_dev->rc_notif[event_id - 1].label,
     ((type == BTRC_NOTIFICATION_TYPE_INTERIM) ? AVRC_CMD_NOTIF
                                               : AVRC_RSP_CHANGED),
     &avrc_rsp);

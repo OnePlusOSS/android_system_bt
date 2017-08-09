@@ -50,6 +50,7 @@
 #include <hardware/bluetooth.h>
 #include <hardware/bt_hf_client.h>
 
+#include "bt_target.h"
 #include "bt_utils.h"
 #include "bta_hf_client_api.h"
 #include "btcore/include/bdaddr.h"
@@ -71,11 +72,20 @@
 #define BTIF_HF_CLIENT_SECURITY (BTA_SEC_AUTHENTICATE | BTA_SEC_ENCRYPT)
 #endif
 
+#if (BTM_WBS_INCLUDED == TRUE)
 #ifndef BTIF_HF_CLIENT_FEATURES
 #define BTIF_HF_CLIENT_FEATURES                                                \
   (BTA_HF_CLIENT_FEAT_ECNR | BTA_HF_CLIENT_FEAT_3WAY |                         \
    BTA_HF_CLIENT_FEAT_CLI | BTA_HF_CLIENT_FEAT_VREC | BTA_HF_CLIENT_FEAT_VOL | \
    BTA_HF_CLIENT_FEAT_ECS | BTA_HF_CLIENT_FEAT_ECC | BTA_HF_CLIENT_FEAT_CODEC)
+#endif
+#else
+#ifndef BTIF_HF_CLIENT_FEATURES
+#define BTIF_HF_CLIENT_FEATURES                                                \
+  (BTA_HF_CLIENT_FEAT_ECNR | BTA_HF_CLIENT_FEAT_3WAY |                         \
+   BTA_HF_CLIENT_FEAT_CLI | BTA_HF_CLIENT_FEAT_VREC | BTA_HF_CLIENT_FEAT_VOL | \
+   BTA_HF_CLIENT_FEAT_ECS | BTA_HF_CLIENT_FEAT_ECC)
+#endif
 #endif
 
 /*******************************************************************************
@@ -707,11 +717,7 @@ static bt_status_t request_last_voice_tag_number(const bt_bdaddr_t* bd_addr) {
  ******************************************************************************/
 static void cleanup(void) {
   BTIF_TRACE_EVENT("%s", __func__);
-
-  if (bt_hf_client_callbacks) {
-    btif_disable_service(BTA_HFP_HS_SERVICE_ID);
-    bt_hf_client_callbacks = NULL;
-  }
+  btif_disable_service(BTA_HFP_HS_SERVICE_ID);
 }
 
 /*******************************************************************************
@@ -1039,8 +1045,14 @@ bt_status_t btif_hf_client_execute_service(bool b_enable) {
     BTA_HfClientEnable(bta_hf_client_evt, BTIF_HF_CLIENT_SECURITY,
                        BTIF_HF_CLIENT_FEATURES, BTIF_HF_CLIENT_SERVICE_NAME);
   } else {
+    if (bt_hf_client_callbacks)
+    {
+        BTIF_TRACE_EVENT("%s: setting call backs to NULL", __FUNCTION__);
+        bt_hf_client_callbacks = NULL;
+    }
     BTA_HfClientDisable();
   }
+  BTIF_TRACE_EVENT("%s: enable: %d completed", __FUNCTION__, b_enable);
   return BT_STATUS_SUCCESS;
 }
 

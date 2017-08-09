@@ -69,6 +69,8 @@ enum {
 #define AVDT_CLOSE_INT 1
 #define AVDT_OPEN_ACP 2
 #define AVDT_OPEN_INT 3
+#define AVDT_CONF_ACP 4
+#define AVDT_CONF_INT 5
 
 /* states for avdt_scb_verify */
 #define AVDT_VERIFY_OPEN 0

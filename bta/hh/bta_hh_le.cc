@@ -68,6 +68,10 @@ static const uint16_t bta_hh_uuid_to_rtp_type[BTA_LE_HID_RTP_UUID_MAX][2] = {
 
 static void bta_hh_gattc_callback(tBTA_GATTC_EVT event, tBTA_GATTC* p_data);
 static void bta_hh_le_add_dev_bg_conn(tBTA_HH_DEV_CB* p_cb, bool check_bond);
+static void read_report_descriptor_ccc_cb(uint16_t conn_id, tGATT_STATUS status,
+                                          uint16_t handle, uint16_t len,
+                                          uint8_t* value, void* data);
+
 // TODO(jpawlowski): uncomment when fixed
 // static void bta_hh_process_cache_rpt (tBTA_HH_DEV_CB *p_cb,
 //                                       tBTA_HH_RPT_CACHE_ENTRY *p_rpt_cache,
@@ -814,6 +818,7 @@ void bta_hh_le_open_cmpl(tBTA_HH_DEV_CB* p_cb) {
     }
 #endif
   }
+  p_cb->cur_srvc_index =0;
 }
 
 /*******************************************************************************
@@ -1647,14 +1652,15 @@ void bta_hh_le_srvc_search_cmpl(tBTA_GATTC_SEARCH_CMPL* p_data) {
   }
 
   const list_t* services = BTA_GATTC_GetServices(p_data->conn_id);
-  uint8_t srvc_index;
+  uint8_t srvc_index = p_dev_cb->cur_srvc_index;
   bool have_hid = false;
+  tBTA_HH_LE_RPT* p_rpt;
   for (list_node_t* sn = list_begin(services); sn != list_end(services);
        sn = list_next(sn)) {
     tBTA_GATTC_SERVICE* service = (tBTA_GATTC_SERVICE*)list_node(sn);
 
     if (service->uuid.uu.uuid16 == UUID_SERVCLASS_LE_HID &&
-        service->is_primary && !have_hid) {
+        service->is_primary ) {
       have_hid = true;
 
       /* found HID primamry service */
@@ -1665,13 +1671,35 @@ void bta_hh_le_srvc_search_cmpl(tBTA_GATTC_SEARCH_CMPL* p_data) {
       p_dev_cb->hid_srvc[srvc_index].control_point_handle = 0;
 
       bta_hh_le_search_hid_chars(p_dev_cb, service);
-
-      APPL_TRACE_DEBUG("%s: have HID service inst_id= %d", __func__,
-                       p_dev_cb->hid_srvc[srvc_index].srvc_inst_id);
-	  if (p_dev_cb->cur_srvc_index < BTA_HH_LE_HID_SRVC_MAX-1)
+      if (p_dev_cb->cur_srvc_index < BTA_HH_LE_HID_SRVC_MAX-1) {
          p_dev_cb->cur_srvc_index++;
+         APPL_TRACE_DEBUG("%s: current service instance  %d", __func__,
+                  srvc_index);
+      }
+    } else if (service->uuid.uu.uuid16 == UUID_SERVCLASS_BATTERY) {
+      for (list_node_t *cn = list_begin(service->characteristics);
+             cn != list_end(service->characteristics); cn = list_next(cn)) {
+         tBTA_GATTC_CHARACTERISTIC *p_char =
+              (tBTA_GATTC_CHARACTERISTIC*) list_node(cn);
+         if (p_char->uuid.uu.uuid16 == GATT_UUID_BATTERY_LEVEL &&
+                   p_char->uuid.len == LEN_UUID_16) {
+            p_rpt = bta_hh_le_find_alloc_report_entry(p_dev_cb, service->s_handle,
+                          GATT_UUID_BATTERY_LEVEL, p_char->handle);
+            if (p_rpt == NULL)
+               APPL_TRACE_ERROR("Add battery report entry failed !!!");
+
+            gatt_queue_read_op(GATT_READ_CHAR, p_dev_cb->conn_id, p_char->handle,
+                        read_report_descriptor_ccc_cb,p_dev_cb);
+            if(p_rpt)
+                bta_hh_le_read_char_descriptor(p_dev_cb, p_char->handle,
+                          GATT_UUID_CHAR_CLIENT_CONFIG,
+                            read_report_descriptor_ccc_cb, p_rpt);
+          }
+       }
     } else if (service->uuid.uu.uuid16 == UUID_SERVCLASS_SCAN_PARAM) {
       p_dev_cb->scan_refresh_char_handle = 0;
+      p_dev_cb->scan_int_char_handle  = 0;
+      p_dev_cb->scps_supported = TRUE;
 
       for (list_node_t* cn = list_begin(service->characteristics);
            cn != list_end(service->characteristics); cn = list_next(cn)) {
@@ -1688,22 +1716,12 @@ void bta_hh_le_srvc_search_cmpl(tBTA_GATTC_SEARCH_CMPL* p_data) {
 
           break;
         }
-      }
-    } else if (service->uuid.uu.uuid16 == UUID_SERVCLASS_GAP_SERVER) {
-      // TODO(jpawlowski): this should be done by GAP profile, remove when GAP
-      // is fixed.
-      for (list_node_t* cn = list_begin(service->characteristics);
-           cn != list_end(service->characteristics); cn = list_next(cn)) {
-        tBTA_GATTC_CHARACTERISTIC* p_char =
-            (tBTA_GATTC_CHARACTERISTIC*)list_node(cn);
         if (p_char->uuid.len == LEN_UUID_16 &&
-            p_char->uuid.uu.uuid16 == GATT_UUID_GAP_PREF_CONN_PARAM) {
-          /* read the char value */
-          gatt_queue_read_op(GATT_READ_CHAR, p_dev_cb->conn_id, p_char->handle,
-                             read_pref_conn_params_cb, p_dev_cb);
-
-          break;
+            p_char->uuid.uu.uuid16 == GATT_UUID_SCAN_INT_WINDOW) {
+           p_dev_cb->scan_int_char_handle = p_char->handle;
         }
+        if (p_dev_cb->scan_refresh_char_handle &&  p_dev_cb->scan_int_char_handle)
+           break;
       }
     }
   }
@@ -1955,16 +1973,32 @@ static void read_report_cb(uint16_t conn_id, tGATT_STATUS status,
  * Returns          void
  *
  ******************************************************************************/
-void bta_hh_le_get_rpt(tBTA_HH_DEV_CB* p_cb, tBTA_HH_RPT_TYPE r_type,
+void bta_hh_le_get_rpt(tBTA_HH_DEV_CB* p_cb, uint8_t srvc_inst, tBTA_HH_RPT_TYPE r_type,
                        uint8_t rpt_id) {
-  tBTA_HH_LE_RPT* p_rpt = bta_hh_le_find_rpt_by_idtype(
-      p_cb->hid_srvc[0].report, p_cb->mode, r_type, rpt_id);
-
+  tBTA_HH_LE_RPT* p_rpt;
+#if (defined BLE_HH_QUALIFICATION_ENABLED && BLE_HH_QUALIFICATION_ENABLED == TRUE)
+  uint8_t  char_handle;
+  switch (rpt_id) {
+    case 7:
+       APPL_TRACE_DEBUG("bta_hh_le_get_rpt: read hid input client config char ");
+       bta_hh_le_hid_read_rpt_clt_cfg(p_cb->addr, srvc_inst);
+       return;
+    default:
+       if (rpt_id > 7) {
+          char_handle = rpt_id;
+          APPL_TRACE_DEBUG("bta_hh_le_get_rpt: read PNP ID char handle = %d\n ",char_handle);
+          BTA_GATTC_ReadCharacteristic(p_cb->conn_id,char_handle, BTA_GATT_AUTH_REQ_NONE,
+                               gatt_read_op_finished, NULL);
+          return;
+       }
+  }
+#endif
+  p_rpt = bta_hh_le_find_rpt_by_idtype(p_cb->hid_srvc[srvc_inst].report, p_cb->mode, r_type, rpt_id);
   if (p_rpt == NULL) {
     APPL_TRACE_ERROR("%s: no matching report", __func__);
     return;
   }
-
+  APPL_TRACE_DEBUG("bta_hh_le_get_rpt UUID:%d", p_rpt->uuid);
   p_cb->w4_evt = BTA_HH_GET_RPT_EVT;
   gatt_queue_read_op(GATT_READ_CHAR, p_cb->conn_id, p_rpt->char_inst_id,
                      read_report_cb, p_cb);
@@ -2006,7 +2040,7 @@ static void write_report_cb(uint16_t conn_id, tGATT_STATUS status,
  * Returns          void
  *
  ******************************************************************************/
-void bta_hh_le_write_rpt(tBTA_HH_DEV_CB* p_cb, tBTA_HH_RPT_TYPE r_type,
+void bta_hh_le_write_rpt(tBTA_HH_DEV_CB* p_cb, uint8_t srvc_inst, tBTA_HH_RPT_TYPE r_type,
                          BT_HDR* p_buf, uint16_t w4_evt) {
   tBTA_HH_LE_RPT* p_rpt;
   uint8_t rpt_id;
@@ -2021,7 +2055,7 @@ void bta_hh_le_write_rpt(tBTA_HH_DEV_CB* p_cb, tBTA_HH_RPT_TYPE r_type,
   STREAM_TO_UINT8(rpt_id, vec_start);
   vector<uint8_t> value(vec_start, vec_start + p_buf->len - 1);
 
-  p_rpt = bta_hh_le_find_rpt_by_idtype(p_cb->hid_srvc[0].report, p_cb->mode,
+  p_rpt = bta_hh_le_find_rpt_by_idtype(p_cb->hid_srvc[srvc_inst].report, p_cb->mode,
                                        r_type, rpt_id);
   if (p_rpt == NULL) {
     APPL_TRACE_ERROR("%s: no matching report", __func__);
@@ -2030,11 +2064,14 @@ void bta_hh_le_write_rpt(tBTA_HH_DEV_CB* p_cb, tBTA_HH_RPT_TYPE r_type,
   }
 
   p_cb->w4_evt = w4_evt;
-
   const tBTA_GATTC_CHARACTERISTIC* p_char =
       BTA_GATTC_GetCharacteristic(p_cb->conn_id, p_rpt->char_inst_id);
 
   tBTA_GATTC_WRITE_TYPE write_type = BTA_GATTC_TYPE_WRITE;
+#if ((defined BLE_HH_QUALIFICATION_ENABLED && BLE_HH_QUALIFICATION_ENABLED == TRUE))
+    gatt_queue_write_op(GATT_WRITE_CHAR, p_cb->conn_id, p_rpt->char_inst_id,
+                    std::move(value), write_type, write_report_cb, p_cb);
+#endif
   if (p_char && (p_char->properties & BTA_GATT_CHAR_PROP_BIT_WRITE_NR))
     write_type = BTA_GATTC_TYPE_WRITE_NO_RSP;
 
@@ -2071,6 +2108,7 @@ void bta_hh_le_suspend(tBTA_HH_DEV_CB* p_cb,
  *
  ******************************************************************************/
 void bta_hh_le_write_dev_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data) {
+  uint8_t  srvc_inst=0;
   switch (p_data->api_sndcmd.t_type) {
     case HID_TRANS_SET_PROTOCOL:
       p_cb->w4_evt = BTA_HH_SET_PROTO_EVT;
@@ -2082,19 +2120,26 @@ void bta_hh_le_write_dev_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data) {
       break;
 
     case HID_TRANS_GET_REPORT:
-      bta_hh_le_get_rpt(p_cb, p_data->api_sndcmd.param,
+      for (srvc_inst=0; srvc_inst < BTA_HH_LE_HID_SRVC_MAX; srvc_inst++) {
+        p_cb->cur_srvc_index = srvc_inst;
+        APPL_TRACE_DEBUG("current service inst:%d",srvc_inst);
+        bta_hh_le_get_rpt(p_cb, srvc_inst, p_data->api_sndcmd.param,
                         p_data->api_sndcmd.rpt_id);
+      }
       break;
 
     case HID_TRANS_SET_REPORT:
-      bta_hh_le_write_rpt(p_cb, p_data->api_sndcmd.param,
-                          p_data->api_sndcmd.p_data, BTA_HH_SET_RPT_EVT);
-      break;
+       for (srvc_inst=0; srvc_inst < BTA_HH_LE_HID_SRVC_MAX; srvc_inst++) {
+          bta_hh_le_write_rpt(p_cb,srvc_inst, p_data->api_sndcmd.param,
+                      p_data->api_sndcmd.p_data, BTA_HH_SET_RPT_EVT);
+       }
+       break;
 
     case HID_TRANS_DATA: /* output report */
-
-      bta_hh_le_write_rpt(p_cb, p_data->api_sndcmd.param,
-                          p_data->api_sndcmd.p_data, BTA_HH_DATA_EVT);
+      for (srvc_inst=0; srvc_inst < BTA_HH_LE_HID_SRVC_MAX; srvc_inst++) {
+        bta_hh_le_write_rpt(p_cb, srvc_inst, p_data->api_sndcmd.param,
+                      p_data->api_sndcmd.p_data, BTA_HH_DATA_EVT);
+      }
       break;
 
     case HID_TRANS_CONTROL:
@@ -2123,9 +2168,11 @@ void bta_hh_le_write_dev_act(tBTA_HH_DEV_CB* p_cb, tBTA_HH_DATA* p_data) {
  *
  ******************************************************************************/
 void bta_hh_le_get_dscp_act(tBTA_HH_DEV_CB* p_cb) {
-  if (p_cb->hid_srvc[0].in_use) {
-    p_cb->dscp_info.descriptor.dl_len = p_cb->hid_srvc[0].descriptor.dl_len;
-    p_cb->dscp_info.descriptor.dsc_list = p_cb->hid_srvc[0].descriptor.dsc_list;
+  uint8_t i;
+  for (i = 0; i < BTA_HH_LE_HID_SRVC_MAX && p_cb->hid_srvc[i].in_use; i ++) {
+
+    p_cb->dscp_info.descriptor.dl_len = p_cb->hid_srvc[i].descriptor.dl_len;
+    p_cb->dscp_info.descriptor.dsc_list = p_cb->hid_srvc[i].descriptor.dsc_list;
 
     (*bta_hh_cb.p_cback)(BTA_HH_GET_DSCP_EVT, (tBTA_HH*)&p_cb->dscp_info);
   }
@@ -2294,7 +2341,7 @@ static void read_report_descriptor_ccc_cb(uint16_t conn_id, tGATT_STATUS status,
  * Returns          void
  *
  ******************************************************************************/
-void bta_hh_le_hid_read_rpt_clt_cfg(BD_ADDR bd_addr, uint8_t rpt_id) {
+void bta_hh_le_hid_read_rpt_clt_cfg(BD_ADDR bd_addr, uint8_t srvc_inst) {
   tBTA_HH_DEV_CB* p_cb = NULL;
   tBTA_HH_LE_RPT* p_rpt;
   uint8_t index = BTA_HH_IDX_INVALID;
@@ -2304,20 +2351,22 @@ void bta_hh_le_hid_read_rpt_clt_cfg(BD_ADDR bd_addr, uint8_t rpt_id) {
     APPL_TRACE_ERROR("%s: unknown device", __func__);
     return;
   }
-
   p_cb = &bta_hh_cb.kdev[index];
-
-  p_rpt = bta_hh_le_find_rpt_by_idtype(p_cb->hid_srvc[0].report, p_cb->mode,
-                                       BTA_HH_RPTT_INPUT, rpt_id);
-
-  if (p_rpt == NULL) {
-    APPL_TRACE_ERROR("%s: no matching report", __func__);
-    return;
+  p_rpt = &p_cb->hid_srvc[srvc_inst].report[0];
+  while(p_rpt != NULL ) {
+    if (p_rpt->rpt_type == BTA_HH_RPTT_INPUT) {
+       if (p_rpt->uuid == GATT_UUID_HID_REPORT) {
+          APPL_TRACE_DEBUG("char_inst_id =%d ", p_rpt->char_inst_id);
+          bta_hh_le_read_char_descriptor(p_cb, p_rpt->char_inst_id,
+                        GATT_UUID_CHAR_CLIENT_CONFIG,
+                       read_report_descriptor_ccc_cb, p_rpt);
+          break;
+       }
+    }
+    if (p_rpt->index == BTA_HH_LE_RPT_MAX - 1)
+       break;
+    p_rpt++;
   }
-
-  bta_hh_le_read_char_descriptor(p_cb, p_rpt->char_inst_id,
-                                 GATT_UUID_CHAR_CLIENT_CONFIG,
-                                 read_report_descriptor_ccc_cb, p_rpt);
   return;
 }
 

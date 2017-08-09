@@ -129,6 +129,19 @@ void avct_l2c_br_connect_ind_cback(BD_ADDR bd_addr, uint16_t lcid,
 
   p_lcb = avct_lcb_by_bd(bd_addr);
   if (p_lcb != NULL) {
+    /* Only one browsing connection is supported.
+     * Second incoming BR conn is rejected.*/
+    for (uint8_t index = 0; index < AVCT_NUM_LINKS; index++)
+    {
+      p_bcb = &avct_cb.bcb[index];
+      if (p_bcb && p_bcb->allocated) {
+        AVCT_TRACE_ERROR("Browsing already connected to other device");
+        AVCT_TRACE_ERROR("Reject Browsing connection:%d", p_bcb->allocated);
+        L2CA_ErtmConnectRsp (bd_addr, id, lcid, result, L2CAP_CONN_OK, &ertm_info);
+        return;
+      }
+    }
+
     /* control channel exists */
     p_bcb = avct_bcb_by_lcb(p_lcb);
     memcpy(p_bcb->peer_addr, bd_addr, BD_ADDR_LEN);
