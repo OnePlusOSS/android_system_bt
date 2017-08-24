@@ -27,6 +27,12 @@
  *  Description:   Implements hal for bluedroid a2dp audio device
  *
  *****************************************************************************/
+//#define BT_AUDIO_SYSTRACE_LOG
+
+#ifdef BT_AUDIO_SYSTRACE_LOG
+#define ATRACE_TAG ATRACE_TAG_ALWAYS
+#define PERF_SYSTRACE 1
+#endif
 
 #define LOG_TAG "bt_a2dp_hw"
 
@@ -54,6 +60,17 @@
 
 #include "audio_a2dp_hw.h"
 
+#ifdef BT_AUDIO_SYSTRACE_LOG
+#include <cutils/trace.h>
+#endif
+
+//#define BT_AUDIO_SAMPLE_LOG
+
+#ifdef BT_AUDIO_SAMPLE_LOG
+FILE *outputpcmsamplefile;
+char btoutputfilename [50] = "/data/audio/output_sample";
+static int number =0;
+#endif
 /*****************************************************************************
  *  Constants & Macros
  *****************************************************************************/
@@ -62,10 +79,14 @@
 #define USEC_PER_SEC 1000000L
 #define SOCK_SEND_TIMEOUT_MS 2000 /* Timeout for sending */
 #define SOCK_RECV_TIMEOUT_MS 5000 /* Timeout for receiving */
+#define CASE_RETURN_STR(const) case const: return #const;
 
 // set WRITE_POLL_MS to 0 for blocking sockets, nonzero for polled non-blocking
 // sockets
 #define WRITE_POLL_MS 20
+
+// default sink latency
+#define A2DP_DEFAULT_SINK_LATENCY 200
 
 #define FNLOG() LOG_VERBOSE(LOG_TAG, "%s", __func__);
 #define DEBUG(fmt, ...) \
@@ -94,6 +115,8 @@ typedef enum {
   AUDIO_A2DP_STATE_STANDBY /* allows write to autoresume */
 } a2dp_state_t;
 
+static bool update_initial_sink_latency = false;
+
 struct a2dp_stream_in;
 struct a2dp_stream_out;
 
@@ -121,6 +144,7 @@ struct a2dp_stream_common {
   size_t buffer_sz;
   struct a2dp_config cfg;
   a2dp_state_t state;
+  tA2DP_LATENCY sink_latency;
 };
 
 struct a2dp_stream_out {
@@ -224,6 +248,39 @@ static int calc_audiotime_usec(struct a2dp_config cfg, int bytes) {
            cfg.rate);
 }
 
+static void ts_error_log(UNUSED_ATTR const char *tag, int val, int buff_size, struct a2dp_config cfg)
+{
+    struct timespec now;
+    static struct timespec prev = {0,0};
+    unsigned long long now_us;
+    unsigned long long diff_us;
+
+    clock_gettime(CLOCK_MONOTONIC, &now);
+
+    now_us = now.tv_sec*USEC_PER_SEC + now.tv_nsec/1000;
+
+    diff_us = (now.tv_sec - prev.tv_sec) * USEC_PER_SEC + (now.tv_nsec - prev.tv_nsec)/1000;
+    prev = now;
+    if(diff_us > (unsigned long long)(calc_audiotime_usec (cfg, buff_size) + 10000L))
+    {
+       ERROR("[%s] ts %08lld, diff %08lld, val %d %d", tag, now_us, diff_us, val, buff_size);
+    }
+}
+
+static const char* dump_a2dp_hal_state(int event)
+{
+    switch(event)
+    {
+        CASE_RETURN_STR(AUDIO_A2DP_STATE_STARTING)
+        CASE_RETURN_STR(AUDIO_A2DP_STATE_STARTED)
+        CASE_RETURN_STR(AUDIO_A2DP_STATE_STOPPING)
+        CASE_RETURN_STR(AUDIO_A2DP_STATE_STOPPED)
+        CASE_RETURN_STR(AUDIO_A2DP_STATE_SUSPENDED)
+        CASE_RETURN_STR(AUDIO_A2DP_STATE_STANDBY)
+        default:
+            return "UNKNOWN STATE ID";
+    }
+}
 /*****************************************************************************
  *
  *   bluedroid stack adaptation
@@ -238,6 +295,12 @@ static int skt_connect(const char* path, size_t buffer_sz) {
   INFO("connect to %s (sz %zu)", path, buffer_sz);
 
   skt_fd = socket(AF_LOCAL, SOCK_STREAM, 0);
+
+  if (skt_fd < 0)
+  {
+     ERROR("failed to create socket");
+     return -1;
+  }
 
   if (osi_socket_local_client_connect(
           skt_fd, path, ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM) < 0) {
@@ -417,7 +480,7 @@ static int a2dp_ctrl_send(struct a2dp_stream_common* common, const void* buffer,
 static int a2dp_command(struct a2dp_stream_common* common, tA2DP_CTRL_CMD cmd) {
   char ack;
 
-  DEBUG("A2DP COMMAND %s", audio_a2dp_hw_dump_ctrl_event(cmd));
+  INFO("A2DP COMMAND %s", audio_a2dp_hw_dump_ctrl_event(cmd));
 
   if (common->ctrl_fd == AUDIO_SKT_DISCONNECTED) {
     INFO("starting up or recovering from previous error");
@@ -444,7 +507,7 @@ static int a2dp_command(struct a2dp_stream_common* common, tA2DP_CTRL_CMD cmd) {
     return -1;
   }
 
-  DEBUG("A2DP COMMAND %s DONE STATUS %d", audio_a2dp_hw_dump_ctrl_event(cmd),
+  INFO("A2DP COMMAND %s DONE STATUS %d", audio_a2dp_hw_dump_ctrl_event(cmd),
         ack);
 
   if (ack == A2DP_CTRL_ACK_INCALL_FAILURE) return ack;
@@ -465,6 +528,7 @@ static int check_a2dp_stream_started(struct a2dp_stream_out *out) {
 }
 
 static int check_a2dp_ready(struct a2dp_stream_common* common) {
+  INFO("state %s", dump_a2dp_hal_state(common->state));
   if (a2dp_command(common, A2DP_CTRL_CMD_CHECK_READY) < 0) {
     ERROR("check a2dp ready failed");
     return -1;
@@ -720,6 +784,23 @@ static int a2dp_write_output_audio_config(struct a2dp_stream_common* common) {
   return 0;
 }
 
+static tA2DP_LATENCY a2dp_get_sink_latency(struct a2dp_stream_common* common) {
+  tA2DP_LATENCY sink_latency;
+
+  if (a2dp_command(common, A2DP_CTRL_GET_SINK_LATENCY) < 0) {
+    ERROR("a2dp get sink latency failed");
+    return -1;
+  }
+
+  if (a2dp_ctrl_receive(common, &sink_latency, sizeof(tA2DP_LATENCY)) < 0) {
+    ERROR("receive a2dp sink latency failed");
+    return -1;
+  }
+
+  INFO("a2dp get sink latency: %d", sink_latency);
+  return sink_latency;
+}
+
 static void a2dp_open_ctrl_path(struct a2dp_stream_common* common) {
   int i;
 
@@ -761,6 +842,7 @@ static void a2dp_stream_common_init(struct a2dp_stream_common* common) {
 
   /* manages max capacity of socket pipe */
   common->buffer_sz = AUDIO_STREAM_OUTPUT_BUFFER_SZ;
+  common->sink_latency = A2DP_DEFAULT_SINK_LATENCY;
 }
 
 static void a2dp_stream_common_destroy(struct a2dp_stream_common* common) {
@@ -773,10 +855,29 @@ static void a2dp_stream_common_destroy(struct a2dp_stream_common* common) {
 static int start_audio_datapath(struct a2dp_stream_common* common) {
   INFO("state %d", common->state);
 
+  #ifdef BT_AUDIO_SYSTRACE_LOG
+  char trace_buf[512];
+  #endif
+
+  INFO("state %s", dump_a2dp_hal_state(common->state));
   int oldstate = common->state;
   common->state = AUDIO_A2DP_STATE_STARTING;
 
   int a2dp_status = a2dp_command(common, A2DP_CTRL_CMD_START);
+  #ifdef BT_AUDIO_SYSTRACE_LOG
+  snprintf(trace_buf, 32, "start_audio_data_path:");
+  if (PERF_SYSTRACE)
+  {
+      ATRACE_BEGIN(trace_buf);
+  }
+  #endif
+
+  #ifdef BT_AUDIO_SYSTRACE_LOG
+  if (PERF_SYSTRACE)
+  {
+     ATRACE_END();
+  }
+  #endif
   if (a2dp_status < 0) {
     ERROR("Audiopath start failed (status %d)", a2dp_status);
     goto error;
@@ -794,6 +895,8 @@ static int start_audio_datapath(struct a2dp_stream_common* common) {
     }
   }
   common->state = (a2dp_state_t)AUDIO_A2DP_STATE_STARTED;
+  /* update initial sink latency after start stream */
+  update_initial_sink_latency = true;
   return 0;
 
 error:
@@ -804,7 +907,7 @@ error:
 static int stop_audio_datapath(struct a2dp_stream_common* common) {
   int oldstate = common->state;
 
-  INFO("state %d", common->state);
+  INFO("state %s", dump_a2dp_hal_state(common->state));
 
   /* prevent any stray output writes from autostarting the stream
      while stopping audiopath */
@@ -827,7 +930,7 @@ static int stop_audio_datapath(struct a2dp_stream_common* common) {
 
 static int suspend_audio_datapath(struct a2dp_stream_common* common,
                                   bool standby) {
-  INFO("state %d", common->state);
+  INFO("state %s", dump_a2dp_hal_state(common->state));
 
   if (common->state == AUDIO_A2DP_STATE_STOPPING) return -1;
 
@@ -856,13 +959,16 @@ static ssize_t out_write(struct audio_stream_out* stream, const void* buffer,
                          size_t bytes) {
   struct a2dp_stream_out* out = (struct a2dp_stream_out*)stream;
   int sent = -1;
+  #ifdef BT_AUDIO_SYSTRACE_LOG
+  char trace_buf[512];
+  #endif
 
   DEBUG("write %zu bytes (fd %d)", bytes, out->common.audio_fd);
 
   std::unique_lock<std::recursive_mutex> lock(*out->common.mutex);
   if (out->common.state == AUDIO_A2DP_STATE_SUSPENDED ||
       out->common.state == AUDIO_A2DP_STATE_STOPPING) {
-    DEBUG("stream suspended or closing");
+    INFO("stream suspended or closing");
     goto finish;
   }
 
@@ -876,9 +982,30 @@ static ssize_t out_write(struct audio_stream_out* stream, const void* buffer,
     ERROR("stream not in stopped or standby");
     goto finish;
   }
+  #ifdef BT_AUDIO_SAMPLE_LOG
+  if (outputpcmsamplefile)
+  {
+      fwrite (buffer,1,bytes,outputpcmsamplefile);
+  }
+  #endif
+
+  ts_error_log("a2dp_out_write", bytes, out->common.buffer_sz, out->common.cfg);
 
   lock.unlock();
+  #ifdef BT_AUDIO_SYSTRACE_LOG
+  snprintf(trace_buf, 32, "out_write:");
+  if (PERF_SYSTRACE)
+  {
+      ATRACE_BEGIN(trace_buf);
+  }
+  #endif
   sent = skt_write(out->common.audio_fd, buffer, bytes);
+  #ifdef BT_AUDIO_SYSTRACE_LOG
+  if (PERF_SYSTRACE)
+  {
+      ATRACE_END();
+  }
+  #endif
   lock.lock();
 
   if (sent == -1) {
@@ -911,7 +1038,7 @@ finish:;
 static uint32_t out_get_sample_rate(const struct audio_stream* stream) {
   struct a2dp_stream_out* out = (struct a2dp_stream_out*)stream;
 
-  DEBUG("rate %" PRIu32, out->common.cfg.rate);
+  INFO("rate %" PRIu32, out->common.cfg.rate);
 
   return out->common.cfg.rate;
 }
@@ -919,7 +1046,7 @@ static uint32_t out_get_sample_rate(const struct audio_stream* stream) {
 static int out_set_sample_rate(struct audio_stream* stream, uint32_t rate) {
   struct a2dp_stream_out* out = (struct a2dp_stream_out*)stream;
 
-  DEBUG("out_set_sample_rate : %" PRIu32, rate);
+  INFO("out_set_sample_rate : %" PRIu32, rate);
 
   out->common.cfg.rate = rate;
 
@@ -932,7 +1059,7 @@ static size_t out_get_buffer_size(const struct audio_stream* stream) {
   const size_t period_size =
       out->common.buffer_sz / AUDIO_STREAM_OUTPUT_BUFFER_PERIODS;
 
-  DEBUG("socket buffer size: %zu  period size: %zu", out->common.buffer_sz,
+  INFO("socket buffer size: %zu  period size: %zu", out->common.buffer_sz,
         period_size);
 
   return period_size;
@@ -1041,20 +1168,20 @@ size_t audio_a2dp_hw_stream_compute_buffer_size(
 static uint32_t out_get_channels(const struct audio_stream* stream) {
   struct a2dp_stream_out* out = (struct a2dp_stream_out*)stream;
 
-  DEBUG("channels 0x%" PRIx32, out->common.cfg.channel_mask);
+  INFO("channels 0x%" PRIx32, out->common.cfg.channel_mask);
 
   return out->common.cfg.channel_mask;
 }
 
 static audio_format_t out_get_format(const struct audio_stream* stream) {
   struct a2dp_stream_out* out = (struct a2dp_stream_out*)stream;
-  DEBUG("format 0x%x", out->common.cfg.format);
+  INFO("format 0x%x", out->common.cfg.format);
   return (audio_format_t)out->common.cfg.format;
 }
 
 static int out_set_format(UNUSED_ATTR struct audio_stream* stream,
                           UNUSED_ATTR audio_format_t format) {
-  DEBUG("setting format not yet supported (0x%x)", format);
+  INFO("setting format not yet supported (0x%x)", format);
   return -ENOSYS;
 }
 
@@ -1242,6 +1369,9 @@ done:
 
 static uint32_t out_get_latency(const struct audio_stream_out* stream) {
   int latency_us;
+  int src_latency;
+  tA2DP_LATENCY sink_latency;
+  int total_latency;
 
   struct a2dp_stream_out* out = (struct a2dp_stream_out*)stream;
 
@@ -1252,7 +1382,19 @@ static uint32_t out_get_latency(const struct audio_stream_out* stream) {
        audio_stream_out_frame_size(&out->stream) / out->common.cfg.rate) *
       1000;
 
-  return (latency_us / 1000) + 200;
+  src_latency = (latency_us / 1000);
+  /* get initial sink latency if update_initial_sink_latency is true */
+  if (update_initial_sink_latency) {
+    sink_latency = a2dp_get_sink_latency(&out->common);
+    if (sink_latency <= 0)
+      out->common.sink_latency = A2DP_DEFAULT_SINK_LATENCY;
+    else
+      out->common.sink_latency = sink_latency;
+    update_initial_sink_latency = false;
+  }
+
+  total_latency = src_latency + out->common.sink_latency;
+  return total_latency;
 }
 
 static int out_set_volume(UNUSED_ATTR struct audio_stream_out* stream,
@@ -1491,6 +1633,11 @@ static int adev_open_output_stream(struct audio_hw_device* dev,
   out = (struct a2dp_stream_out*)calloc(1, sizeof(struct a2dp_stream_out));
 
   if (!out) return -ENOMEM;
+  #ifdef BT_AUDIO_SAMPLE_LOG
+  snprintf(btoutputfilename, sizeof(btoutputfilename), "%s%d%s", btoutputfilename, number,".pcm");
+  outputpcmsamplefile = fopen (btoutputfilename, "ab");
+  number++;
+  #endif
 
   out->stream.common.get_sample_rate = out_get_sample_rate;
   out->stream.common.set_sample_rate = out_set_sample_rate;
@@ -1564,7 +1711,7 @@ static int adev_open_output_stream(struct audio_hw_device* dev,
   *stream_out = &out->stream;
   a2dp_dev->output = out;
 
-  DEBUG("success");
+  INFO("success");
   /* Delay to ensure Headset is in proper state when START is initiated from
    * DUT immediately after the connection due to ongoing music playback. */
   usleep(1000000);
@@ -1595,6 +1742,11 @@ static void adev_close_output_stream(struct audio_hw_device* dev,
       stop_audio_datapath(&out->common);
     }
 
+    #ifdef BT_AUDIO_SAMPLE_LOG
+    ALOGV("close file output");
+    fclose (outputpcmsamplefile);
+    #endif
+
     skt_disconnect(out->common.ctrl_fd);
     out->common.ctrl_fd = AUDIO_SKT_DISCONNECTED;
   }
@@ -1603,7 +1755,7 @@ static void adev_close_output_stream(struct audio_hw_device* dev,
   free(stream);
   a2dp_dev->output = NULL;
 
-  DEBUG("done");
+  INFO("done");
 }
 
 static int adev_set_parameters(struct audio_hw_device* dev,
@@ -1616,8 +1768,6 @@ static int adev_set_parameters(struct audio_hw_device* dev,
   struct a2dp_stream_out* out = a2dp_dev->output;
 
   if (out == NULL) return retval;
-
-  INFO("state %d", out->common.state);
 
   retval =
       out->stream.common.set_parameters((struct audio_stream*)out, kvpairs);

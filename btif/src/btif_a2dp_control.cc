@@ -85,13 +85,13 @@ static void btif_a2dp_recv_ctrl_data(void) {
         btif_a2dp_command_ack(A2DP_CTRL_ACK_FAILURE);
         return;
       }
-
-      /* check whether AV is ready to setup A2DP datapath */
-      if (btif_av_stream_ready() || btif_av_stream_started_ready()) {
+      /* check for valid AV connection */
+      if (btif_av_is_connected()) {
+        BTIF_TRACE_DEBUG("%s:Got valid connection",__func__);
         btif_a2dp_command_ack(A2DP_CTRL_ACK_SUCCESS);
       } else {
-        APPL_TRACE_WARNING("%s: A2DP command %s while AV stream is not ready",
-                           __func__, audio_a2dp_hw_dump_ctrl_event(cmd));
+        BTIF_TRACE_DEBUG("%s:A2dp command %s while valid AV connection",
+                         __func__, audio_a2dp_hw_dump_ctrl_event(cmd));
         btif_a2dp_command_ack(A2DP_CTRL_ACK_FAILURE);
       }
       break;
@@ -280,6 +280,18 @@ static void btif_a2dp_recv_ctrl_data(void) {
     case A2DP_CTRL_CMD_OFFLOAD_START:
       btif_dispatch_sm_event(BTIF_AV_OFFLOAD_START_REQ_EVT, NULL, 0);
       break;
+
+    case A2DP_CTRL_GET_SINK_LATENCY: {
+      tA2DP_LATENCY sink_latency;
+
+      sink_latency = btif_av_get_sink_latency();
+      btif_a2dp_command_ack(A2DP_CTRL_ACK_SUCCESS);
+      /* Send sink latency */
+      UIPC_Send(UIPC_CH_ID_AV_CTRL, 0,
+                reinterpret_cast<const uint8_t*>(&sink_latency),
+                sizeof(tA2DP_LATENCY));
+      break;
+    }
 
     default:
       APPL_TRACE_ERROR("UNSUPPORTED CMD (%d)", cmd);

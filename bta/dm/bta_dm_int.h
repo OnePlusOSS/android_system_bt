@@ -97,6 +97,7 @@ enum {
   BTA_DM_API_REMOVE_ALL_ACL_EVT,
   BTA_DM_API_REMOVE_DEVICE_EVT,
   BTA_DM_API_HCI_RAW_COMMAND_EVT,
+  BTA_DM_API_SET_WIFI_STATE_EVT,
   BTA_DM_MAX_EVT
 };
 
@@ -271,6 +272,8 @@ typedef struct {
   uint8_t new_role;
   BD_ADDR bd_addr;
   uint8_t hci_status;
+  uint16_t pkt_type;
+  uint16_t soc_log_id;
   uint16_t handle;
   tBT_TRANSPORT transport;
 } tBTA_DM_ACL_CHANGE;
@@ -316,6 +319,12 @@ typedef struct {
   BD_ADDR bd_addr;
 } tBTA_DM_API_REMOVE_DEVICE;
 
+/* data type for BTA_DM_API_SET_WIFI_STATE_EVT */
+typedef struct
+{
+  BT_HDR hdr;
+  bool status;
+} tBTA_DM_API_SET_WIFI_STATE;
 /* data type for BTA_DM_API_EXECUTE_CBACK_EVT */
 typedef struct {
   BT_HDR hdr;
@@ -518,6 +527,7 @@ typedef union {
   tBTA_DM_API_REMOVE_ACL remove_acl;
   tBTA_DM_API_REMOVE_ALL_ACL remove_all_acl;
   tBTA_DM_API_RAW_COMMAND btc_command;
+  tBTA_DM_API_SET_WIFI_STATE wifi_state;
 } tBTA_DM_MSG;
 
 #define BTA_DM_NUM_PEER_DEVICE 7
@@ -622,6 +632,7 @@ typedef struct {
   uint16_t state;
   bool disabling;
   alarm_t* disable_timer;
+  alarm_t* bond_retrail_timer;
   uint32_t wbt_sdp_handle; /* WIDCOMM Extensions SDP record handle */
   uint8_t wbt_scn;         /* WIDCOMM Extensions SCN */
   uint8_t num_master_only;
@@ -814,6 +825,7 @@ extern void bta_dm_set_visibility(tBTA_DM_MSG* p_data);
 
 extern void bta_dm_set_scan_config(tBTA_DM_MSG* p_data);
 extern void bta_dm_vendor_spec_command(tBTA_DM_MSG* p_data);
+extern void bta_dm_set_wifi_state(tBTA_DM_MSG *p_data);
 extern void bta_dm_bond(tBTA_DM_MSG* p_data);
 extern void bta_dm_bond_cancel(tBTA_DM_MSG* p_data);
 extern void bta_dm_pin_reply(tBTA_DM_MSG* p_data);

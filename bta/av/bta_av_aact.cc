@@ -49,6 +49,7 @@
 #include "btm_int.h"
 #include "device/include/controller.h"
 #include "a2dp_sbc.h"
+#include "device/include/interop_config.h"
 #if (BTA_AR_INCLUDED == TRUE)
 #include "bta_ar_api.h"
 #endif
@@ -988,7 +989,36 @@ void bta_av_do_disc_a2dp(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
   APPL_TRACE_DEBUG("%s: ok_continue: %d wait:x%x, q_tag: %d", __func__,
                    ok_continue, p_scb->wait, p_scb->q_tag);
-  if (!ok_continue) return;
+
+  if (!ok_continue) {
+    tBTA_AV_SCB* p_scbi;
+    int i, mask;
+    uint8_t role;
+    APPL_TRACE_DEBUG("%s:audio open cnt = %d",__func__, bta_av_cb.audio_open_cnt);
+    if (bta_av_cb.audio_open_cnt > 0) {
+      for (i = 0; i < BTA_AV_NUM_STRS; i++) {
+        mask = BTA_AV_HNDL_TO_MSK(i);
+        p_scbi = bta_av_cb.p_scb[i];
+        if (p_scbi && (p_scb->hdi != i) &&    /* not the original channel */
+          ((bta_av_cb.conn_audio & mask) || /* connected audio */
+          (bta_av_cb.conn_video & mask))) {  /* connected video */
+          BTM_GetRole(p_scbi->peer_addr, &role);
+          if (BTM_ROLE_MASTER != role) {
+            if (!interop_database_match_addr(INTEROP_DISABLE_ROLE_SWITCH,
+                                          (bt_bdaddr_t *)p_scbi->peer_addr)) {
+              return;
+            }else {
+              APPL_TRACE_DEBUG("%s:other connected remote is blacklisted for RS",__func__);
+              APPL_TRACE_DEBUG("%s:RS is not possible, continue avdtp signaling",__func__);
+            }
+          }
+        }
+      }
+    } else {
+      APPL_TRACE_DEBUG("%s:returning",__func__);
+      return;
+    }
+  }
 
   /* clear the role switch bits */
   p_scb->wait &= ~BTA_AV_WAIT_ROLE_SW_BITS;
@@ -2146,8 +2176,15 @@ void bta_av_reconfig(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   // can Suspend->Reconfigure->Start.
   // Otherwise, we have to Close->Configure->Open->Start or
   // Close->Configure->Open for streams that are / are not started.
+   APPL_TRACE_DEBUG("rcfg_idx:%d,sep_info_idx:%d,suspend:%d,recfg_sup:%d,suspend_sup:%d",
+                     p_scb->rcfg_idx,
+                     p_scb->sep_info_idx,
+                     p_rcfg->suspend,
+                     p_scb->recfg_sup,
+                     p_scb->suspend_sup);
   if ((p_scb->rcfg_idx == p_scb->sep_info_idx) && p_rcfg->suspend &&
       p_scb->recfg_sup && p_scb->suspend_sup) {
+      APPL_TRACE_DEBUG("p_scb->started:%d", p_scb->started);
     if (p_scb->started) {
       // Suspend->Reconfigure->Start
       stop.flush = false;

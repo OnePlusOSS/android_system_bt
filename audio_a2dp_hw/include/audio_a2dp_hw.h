@@ -90,6 +90,7 @@ typedef enum {
   A2DP_CTRL_GET_OUTPUT_AUDIO_CONFIG,
   A2DP_CTRL_SET_OUTPUT_AUDIO_CONFIG,
   A2DP_CTRL_CMD_OFFLOAD_START,
+  A2DP_CTRL_GET_SINK_LATENCY,
 } tA2DP_CTRL_CMD;
 
 typedef enum {
@@ -102,6 +103,7 @@ typedef enum {
 typedef uint32_t tA2DP_SAMPLE_RATE;
 typedef uint8_t tA2DP_CHANNEL_COUNT;
 typedef uint8_t tA2DP_BITS_PER_SAMPLE;
+typedef uint16_t tA2DP_LATENCY;
 
 /*****************************************************************************
  *  Type definitions for callback functions

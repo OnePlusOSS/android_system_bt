@@ -532,7 +532,7 @@ void bta_ag_rfc_acp_open(tBTA_AG_SCB* p_scb, tBTA_AG_DATA* p_data) {
   /* set role */
   p_scb->role = BTA_AG_ACP;
 
-  APPL_TRACE_DEBUG("bta_ag_rfc_acp_open: serv_handle0 = %d serv_handle1 = %d",
+  APPL_TRACE_IMP ("bta_ag_rfc_acp_open: serv_handle0 = %d serv_handle1 = %d",
                    p_scb->serv_handle[0], p_scb->serv_handle[1]);
 
   /* get bd addr of peer */
@@ -603,7 +603,7 @@ void bta_ag_rfc_acp_open(tBTA_AG_SCB* p_scb, tBTA_AG_DATA* p_data) {
     }
   }
 
-  APPL_TRACE_DEBUG("bta_ag_rfc_acp_open: conn_service = %d conn_handle = %d",
+  APPL_TRACE_IMP("bta_ag_rfc_acp_open: conn_service = %d conn_handle = %d",
                    p_scb->conn_service, p_scb->conn_handle);
 
   /* close any unopened server */
@@ -648,15 +648,25 @@ void bta_ag_rfc_data(tBTA_AG_SCB* p_scb, UNUSED_ATTR tBTA_AG_DATA* p_data) {
       break;
     }
 
+    if (strstr(buf, "AT+IPHONEACCEV") != NULL) {
+        APPL_TRACE_IMP("%s: AT+IPHONEACCEV received, not coming out of sniff", __func__);
+    } else {
+        APPL_TRACE_IMP("%s: setting sys busy", __func__);
+        bta_sys_busy(BTA_ID_AG, p_scb->app_id, p_scb->peer_addr);
+    }
     /* run AT command interpreter on data */
-    bta_sys_busy(BTA_ID_AG, p_scb->app_id, p_scb->peer_addr);
     bta_ag_at_parse(&p_scb->at_cb, buf, len);
     if ((p_scb->sco_idx != BTM_INVALID_SCO_INDEX) &&
         bta_ag_sco_is_open(p_scb)) {
-      APPL_TRACE_DEBUG("%s change link policy for SCO", __func__);
+      APPL_TRACE_IMP("%s change link policy for SCO", __func__);
       bta_sys_sco_open(BTA_ID_AG, p_scb->app_id, p_scb->peer_addr);
     } else {
-      bta_sys_idle(BTA_ID_AG, p_scb->app_id, p_scb->peer_addr);
+      if (strstr(buf, "AT+IPHONEACCEV") != NULL) {
+          APPL_TRACE_IMP("%s: AT+IPHONEACCEV received, not setting idle", __func__);
+      } else {
+          APPL_TRACE_IMP("%s: resetting idle timer", __func__);
+          bta_sys_idle(BTA_ID_AG, p_scb->app_id, p_scb->peer_addr);
+      }
     }
 
     /* no more data to read, we're done */
@@ -832,7 +842,7 @@ void bta_ag_ci_rx_data(tBTA_AG_SCB* p_scb, tBTA_AG_DATA* p_data) {
   bta_sys_busy(BTA_ID_AG, p_scb->app_id, p_scb->peer_addr);
   PORT_WriteData(p_scb->conn_handle, p_data_area, strlen(p_data_area), &len);
   if ((p_scb->sco_idx != BTM_INVALID_SCO_INDEX) && bta_ag_sco_is_open(p_scb)) {
-    APPL_TRACE_DEBUG("bta_ag_rfc_data, change link policy for SCO");
+    APPL_TRACE_IMP("bta_ag_rfc_data, change link policy for SCO");
     bta_sys_sco_open(BTA_ID_AG, p_scb->app_id, p_scb->peer_addr);
   } else {
     bta_sys_idle(BTA_ID_AG, p_scb->app_id, p_scb->peer_addr);

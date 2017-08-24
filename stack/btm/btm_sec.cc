@@ -2348,7 +2348,7 @@ tBTM_STATUS btm_sec_l2cap_access_req(BD_ADDR bd_addr, uint16_t psm,
       p_dev_rec->sec_state = BTM_SEC_STATE_DELAY_FOR_ENC;
       (*p_callback)(bd_addr, transport, p_ref_data, rc);
 
-      return BTM_SUCCESS;
+      return BTM_CMD_STARTED;
     }
   }
 

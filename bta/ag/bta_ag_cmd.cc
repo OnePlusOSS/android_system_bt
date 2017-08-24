@@ -35,7 +35,7 @@
 #include "port_api.h"
 #include "utl.h"
 #include <cutils/properties.h>
-
+#include "device/include/interop.h"
 /*****************************************************************************
  *  Constants
  ****************************************************************************/
@@ -836,7 +836,7 @@ void bta_ag_at_hfp_cback(tBTA_AG_SCB* p_scb, uint16_t cmd, uint8_t arg_type,
     return;
   }
 
-  APPL_TRACE_DEBUG("%s: AT command %d, arg_type %d, int_arg %d, arg %s",
+  APPL_TRACE_IMP("%s: AT command %d, arg_type %d, int_arg %d, arg %s",
                    __func__, cmd, arg_type, int_arg, p_arg);
 
   memset(&val, 0, sizeof(tBTA_AG_VAL));
@@ -1063,6 +1063,19 @@ void bta_ag_at_hfp_cback(tBTA_AG_SCB* p_scb, uint16_t cmd, uint8_t arg_type,
       p_scb->peer_features = (uint16_t)int_arg;
 
       tBTA_AG_FEAT features = p_scb->features & BTA_AG_BSRF_FEAT_SPEC;
+
+      if (interop_match_addr(INTEROP_DISABLE_HF_INDICATOR,
+          (const bt_bdaddr_t*)p_scb->peer_addr))
+      {
+         if ((p_scb->peer_version < HFP_VERSION_1_7) &&
+              (p_scb->peer_features & BTA_AG_PEER_FEAT_HF_IND))
+         {
+            APPL_TRACE_WARNING("hf indicator needs hfp 1.7 support,"
+                               "thus remove remote device HF indicator bit");
+            p_scb->peer_features = p_scb->peer_features &(~BTA_AG_PEER_FEAT_HF_IND);
+         }
+      }
+
       if ((p_scb->peer_version < HFP_VERSION_1_7) &&
            (!(p_scb->peer_features & BTA_AG_PEER_FEAT_HF_IND))) {
         /* For PTS keep flags as is */
@@ -1410,7 +1423,7 @@ void bta_ag_hsp_result(tBTA_AG_SCB* p_scb, tBTA_AG_API_RESULT* p_result) {
  *
  ******************************************************************************/
 void bta_ag_hfp_result(tBTA_AG_SCB* p_scb, tBTA_AG_API_RESULT* p_result) {
-  APPL_TRACE_DEBUG("bta_ag_hfp_result : res = %d", p_result->result);
+  APPL_TRACE_IMP("bta_ag_hfp_result : res = %d", p_result->result);
 
   switch (p_result->result) {
     case BTA_AG_SPK_RES:

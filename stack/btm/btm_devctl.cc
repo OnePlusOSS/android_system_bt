@@ -229,6 +229,33 @@ bool BTM_IsDeviceUp(void) { return controller_get_interface()->get_is_ready(); }
 
 /*******************************************************************************
  *
+ * Function         BTM_SetWifiState
+ *
+ * Description      This function set wifi state.
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void BTM_SetWifiState(bool status) {
+  btm_cb.is_wifi_connected = status;
+  BTM_TRACE_WARNING ("btm_cb.is_wifi_connected = %d ", btm_cb.is_wifi_connected);
+}
+
+/*******************************************************************************
+ *
+ * Function         BTM_GetWifiState
+ *
+ * Description      This function returns wifi connected status.
+ *
+ * Returns          wifi connected status
+ *
+ ******************************************************************************/
+bool BTM_GetWifiState(void) {
+  return btm_cb.is_wifi_connected;
+}
+
+/*******************************************************************************
+**
  * Function         btm_read_local_name_timeout
  *
  * Description      Callback when reading the local name times out.
@@ -413,7 +440,7 @@ tBTM_STATUS BTM_SetLocalDeviceName(char* p_name) {
   /* Save the device name if local storage is enabled */
   p = (uint8_t*)btm_cb.cfg.bd_name;
   if (p != (uint8_t*)p_name)
-    strlcpy(btm_cb.cfg.bd_name, p_name, BTM_MAX_LOC_BD_NAME_LEN);
+    strlcpy(btm_cb.cfg.bd_name, p_name, BTM_MAX_LOC_BD_NAME_LEN+1);
 
   btsnd_hcic_change_name(p);
   return (BTM_CMD_STARTED);

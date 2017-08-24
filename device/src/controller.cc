@@ -28,9 +28,12 @@
 #include "btcore/include/version.h"
 #include "hcimsgs.h"
 #include "osi/include/future.h"
+#include "osi/include/properties.h"
 #include "stack/include/btm_ble_api.h"
 #include "osi/include/log.h"
 #include "utils/include/bt_utils.h"
+
+#define BTSNOOP_ENABLE_PROPERTY "persist.bluetooth.btsnoopenable"
 
 const bt_event_mask_t BLE_EVENT_MASK = {
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x0B, 0xFE, 0x7f}};
@@ -84,6 +87,32 @@ static bool secure_connections_supported;
 
 // Module lifecycle functions
 
+void send_soc_log_command(bool value) {
+  int soc_type = get_soc_type();
+  uint8_t param[5] = {0x10,0x03,0x00,0x00,0x01};
+  uint8_t param_cherokee[2] = {0x14, 0x01};
+  if (!value) {
+   // Disable SoC logging
+    param[1] = 0x02;
+    param_cherokee[1] = 0x00;
+  }
+
+  if (soc_type == BT_SOC_SMD) {
+    LOG_INFO(LOG_TAG, "%s for BT_SOC_SMD.", __func__);
+    BTM_VendorSpecificCommand(HCI_VS_HOST_LOG_OPCODE,5,param,NULL);
+  } else if (soc_type == BT_SOC_CHEROKEE) {
+    LOG_INFO(LOG_TAG, "%s for BT_SOC_CHEROKEE.", __func__);
+    BTM_VendorSpecificCommand(HCI_VS_HOST_LOG_OPCODE, 2, param_cherokee, NULL);
+  }
+}
+#ifndef QLOGKIT_USERDEBUG
+static bool is_soc_logging_enabled() {
+  char btsnoop_enabled[PROPERTY_VALUE_MAX] = {0};
+  osi_property_get(BTSNOOP_ENABLE_PROPERTY, btsnoop_enabled, "false");
+  return strncmp(btsnoop_enabled, "true", 4) == 0;
+}
+#endif
+
 static future_t* start_up(void) {
   BT_HDR* response;
 
@@ -103,6 +132,15 @@ static future_t* start_up(void) {
       L2CAP_MTU_SIZE, SCO_HOST_BUFFER_SIZE, L2CAP_HOST_FC_ACL_BUFS, 10));
 
   packet_parser->parse_generic_command_complete(response);
+
+  #ifdef QLOGKIT_USERDEBUG
+    send_soc_log_command(true);
+  #else
+    if (is_soc_logging_enabled()) {
+      LOG_INFO(LOG_TAG, "%s for non-userdebug api ", __func__);
+      send_soc_log_command(true);
+    }
+  #endif
 
   // Read the local version info off the controller next, including
   // information such as manufacturer and supported HCI version
@@ -280,7 +318,10 @@ EXPORT_SYMBOL extern const module_t controller_module = {
     .dependencies = {HCI_MODULE, NULL}};
 
 // Interface functions
-static bool get_is_ready(void) { return readable; }
+
+static bool get_is_ready(void) {
+  return readable;
+}
 
 static const bt_bdaddr_t* get_address(void) {
   CHECK(readable);

@@ -60,7 +60,8 @@ bool btif_a2dp_on_started(tBTA_AV_START* p_av_start, bool pending_start,
     /* ack back a local start request */
     if (btif_av_is_split_a2dp_enabled()) {
       if (btif_hf_is_call_vr_idle())
-        btif_dispatch_sm_event(BTIF_AV_OFFLOAD_START_REQ_EVT, NULL, 0);
+        //btif_dispatch_sm_event(BTIF_AV_OFFLOAD_START_REQ_EVT, NULL, 0);
+        btif_dispatch_sm_event(BTIF_AV_OFFLOAD_START_REQ_EVT, (char *)&hdl, 1);
       else {
         APPL_TRACE_ERROR("call in progress, do not start offload");
         btif_a2dp_audio_on_started(A2DP_CTRL_ACK_INCALL_FAILURE);
@@ -116,8 +117,10 @@ void btif_a2dp_on_stopped(tBTA_AV_SUSPEND* p_av_suspend) {
   if (!btif_av_is_split_a2dp_enabled()) {
     btif_a2dp_source_on_stopped(p_av_suspend);
   } else { //TODO send command to btif_a2dp_audio_interface
-    if (btif_a2dp_audio_if_init)
+    if (btif_a2dp_audio_if_init) {
+      if (p_av_suspend != NULL)
         btif_a2dp_audio_on_stopped(p_av_suspend->status);
+    }
     else
         APPL_TRACE_EVENT("btif_a2dp_on_stopped, audio interface not up");
   }
@@ -133,7 +136,8 @@ void btif_a2dp_on_suspended(tBTA_AV_SUSPEND* p_av_suspend) {
       btif_a2dp_source_on_suspended(p_av_suspend);
     }
   } else {
-    btif_a2dp_audio_on_suspended(p_av_suspend->status);
+     if (p_av_suspend != NULL)
+       btif_a2dp_audio_on_suspended(p_av_suspend->status);
   }
 }
 
@@ -172,6 +176,11 @@ void btif_a2dp_on_offload_started(tBTA_AV_STATUS status) {
   } else {
     btif_a2dp_command_ack(ack);
   }
+}
+
+void btif_a2dp_honor_remote_start() {
+  APPL_TRACE_WARNING("%s",__func__);
+  btif_a2dp_source_on_remote_start();
 }
 
 void btif_debug_a2dp_dump(int fd) {

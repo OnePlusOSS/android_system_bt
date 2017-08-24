@@ -42,6 +42,7 @@
 #include "gap_api.h"
 #include "hcimsgs.h"
 #include "osi/include/osi.h"
+#include "osi/include/time.h"
 
 #include "advertise_data_parser.h"
 #include "btm_ble_int.h"
@@ -2165,6 +2166,8 @@ static void btm_ble_process_adv_pkt_cont(
   {
     p_inq->inq_cmpl_info.num_resp++;
   }
+
+  p_i->time_of_resp = time_get_os_boottime_ms();
 
   /* update the LE device information in inquiry database */
   btm_ble_update_inq_result(p_i, addr_type, bda, evt_type, primary_phy,

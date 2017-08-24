@@ -121,7 +121,8 @@ static const char BTE_LOGMSG_MODULE[] = "bte_logmsg_module";
 #define BTTRC_ID_BTAPP 87
 /* this is a temporary solution to allow dynamic enable/disable of
  * BT_PROTOCOL_TRACE */
-#define BTTRC_ID_BT_PROTOCOL 88
+#define BTTRC_ID_LATENCY_AUDIO 88
+#define BTTRC_ID_BT_PROTOCOL 89
 #define BTTRC_ID_MAX_ID BTTRC_ID_BT_PROTOCOL
 #define BTTRC_ID_ALL_LAYERS 0xFF /* all trace layers */
 
@@ -665,8 +666,14 @@ static const char BTE_LOGMSG_MODULE[] = "bte_logmsg_module";
   }
 
 extern uint8_t btif_trace_level;
+extern uint8_t audio_latency_trace_level;
 
 /* define traces for application */
+#define BTIF_TRACE_IMP(...)                                           \
+  {                                                                   \
+      LogMsg(TRACE_CTRL_GENERAL | TRACE_LAYER_NONE |                  \
+                  TRACE_ORG_APPL | TRACE_TYPE_DEBUG, ##__VA_ARGS__);  \
+  }
 #define BTIF_TRACE_ERROR(...)                                         \
   {                                                                   \
     if (btif_trace_level >= BT_TRACE_LEVEL_ERROR)                     \
@@ -711,6 +718,11 @@ extern uint8_t btif_trace_level;
   }
 
 /* define traces for application */
+#define APPL_TRACE_IMP(...)                                           \
+  {                                                                   \
+      LogMsg(TRACE_CTRL_GENERAL | TRACE_LAYER_NONE |                  \
+                 TRACE_ORG_APPL | TRACE_TYPE_DEBUG, ##__VA_ARGS__);   \
+  }
 #define APPL_TRACE_ERROR(...)                                         \
   {                                                                   \
     if (appl_trace_level >= BT_TRACE_LEVEL_ERROR)                     \
@@ -753,7 +765,12 @@ extern uint8_t btif_trace_level;
                  TRACE_TYPE_DEBUG,                                    \
              ##__VA_ARGS__);                                          \
   }
-
+#define APPL_TRACE_LATENCY_AUDIO(...)                                 \
+{                                                                     \
+    if (audio_latency_trace_level >= BT_TRACE_LEVEL_VERBOSE)          \
+    LogMsg(TRACE_CTRL_GENERAL | TRACE_LAYER_NONE | TRACE_ORG_APPL |   \
+            TRACE_TYPE_DEBUG, ##__VA_ARGS__);                         \
+}
 typedef uint8_t tBTTRC_LAYER_ID;
 typedef uint8_t(tBTTRC_SET_TRACE_LEVEL)(uint8_t);
 

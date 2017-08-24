@@ -37,7 +37,7 @@ typedef enum {
 #ifndef AVRC_PEER_VERSION_CONF_FILE
 #define AVRC_PEER_VERSION_CONF_FILE "/data/misc/bluedroid/avrc_peer_entries.conf"
 #endif
-
+#define LOG_ID_STATS_A2DP      (0x06 << 8) | 0x00
 typedef enum {
     BT_SOC_DEFAULT = 0,
     BT_SOC_SMD = BT_SOC_DEFAULT,

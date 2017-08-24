@@ -70,6 +70,7 @@ void l2c_rcv_acl_data(BT_HDR* p_msg) {
   tL2C_CCB* p_ccb = NULL;
   uint16_t l2cap_len, rcv_cid, psm;
   uint16_t credit;
+  uint16_t soc_log_stats_id;
 
   /* Extract the handle */
   STREAM_TO_UINT16(handle, p);
@@ -115,6 +116,12 @@ void l2c_rcv_acl_data(BT_HDR* p_msg) {
           " opcode:%d cur count:%d",
           handle, p_msg->layer_specific, rcv_cid, cmd_code,
           list_length(l2cb.rcv_pending_q));
+      } else if (handle == 0xedc) {    /* Handle 0x2edc used for SOC debug Logging */
+        p += 1;              /* move offset to extract soc log id type */
+        STREAM_TO_UINT16 (soc_log_stats_id, p);
+        if ( soc_log_stats_id == (LOG_ID_STATS_A2DP)) {
+           btm_process_soc_logging_evt(soc_log_stats_id);
+        }
       }
       osi_free(p_msg);
       return;

@@ -90,6 +90,7 @@ static const char* const bt_layer_tags[] = {
 static uint8_t BTAPP_SetTraceLevel(uint8_t new_level);
 static uint8_t BTIF_SetTraceLevel(uint8_t new_level);
 static uint8_t BTU_SetTraceLevel(uint8_t new_level);
+static uint8_t AUDIO_Latency_SetTraceLevel(uint8_t new_level);
 
 /* make sure list is order by increasing layer id!!! */
 static tBTTRC_FUNC_MAP bttrc_set_level_map[] = {
@@ -139,7 +140,10 @@ static tBTTRC_FUNC_MAP bttrc_set_level_map[] = {
     {BTTRC_ID_STK_HIDD, BTTRC_ID_STK_HIDD, HID_DevSetTraceLevel, "TRC_HID_DEV",
      DEFAULT_CONF_TRACE_LEVEL},
 #endif
-
+#if (BT_TRACE_LATENCY_AUDIO == TRUE)
+    {BTTRC_ID_LATENCY_AUDIO, BTTRC_ID_LATENCY_AUDIO, AUDIO_Latency_SetTraceLevel, "TRC_LATENCY_AUDIO",
+     DEFAULT_CONF_TRACE_LEVEL},
+#endif
     /* LayerIDs for BTA, currently everything maps onto appl_trace_level.
      */
     {BTTRC_ID_BTA_ACC, BTTRC_ID_BTAPP, BTAPP_SetTraceLevel, "TRC_BTAPP",
@@ -150,7 +154,7 @@ static tBTTRC_FUNC_MAP bttrc_set_level_map[] = {
     {0, 0, NULL, NULL, DEFAULT_CONF_TRACE_LEVEL}};
 
 void LogMsg(uint32_t trace_set_mask, const char* fmt_str, ...) {
-  static char buffer[BTE_LOG_BUF_SIZE];
+  char buffer[BTE_LOG_BUF_SIZE];
   int trace_layer = TRACE_GET_LAYER(trace_set_mask);
   if (trace_layer >= TRACE_LAYER_MAX_NUM) trace_layer = 0;
 
@@ -192,6 +196,14 @@ static uint8_t BTIF_SetTraceLevel(uint8_t new_level) {
   if (new_level != 0xFF) btif_trace_level = new_level;
 
   return btif_trace_level;
+}
+
+static uint8_t AUDIO_Latency_SetTraceLevel( uint8_t new_level )
+{
+  if (new_level != 0xFF)
+      audio_latency_trace_level = new_level;
+
+  return (audio_latency_trace_level);
 }
 
 static uint8_t BTU_SetTraceLevel(uint8_t new_level) {

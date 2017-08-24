@@ -169,7 +169,7 @@ void avct_lcb_event(tAVCT_LCB* p_lcb, uint8_t event, tAVCT_LCB_EVT* p_data) {
   uint8_t action;
   int i;
 
-  AVCT_TRACE_EVENT("LCB lcb=%d event=%s state=%s", p_lcb->allocated,
+  BTIF_TRACE_IMP("LCB lcb=%d event=%s state=%s", p_lcb->allocated,
                    avct_lcb_evt_str[event], avct_lcb_st_str[p_lcb->state]);
 
   /* look up the state table for the current state */
@@ -204,7 +204,7 @@ void avct_bcb_event(tAVCT_BCB* p_bcb, uint8_t event, tAVCT_LCB_EVT* p_data) {
   uint8_t action;
   int i;
 
-  AVCT_TRACE_EVENT("BCB lcb=%d event=%s state=%s", p_bcb->allocated,
+  BTIF_TRACE_IMP("BCB lcb=%d event=%s state=%s", p_bcb->allocated,
                    avct_lcb_evt_str[event], avct_lcb_st_str[p_bcb->state]);
 
   /* look up the state table for the current state */

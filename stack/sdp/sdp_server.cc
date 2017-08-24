@@ -125,6 +125,10 @@ static tSDP_RECORD *sdp_update_pbap_record_if_blacklisted(tSDP_RECORD *p_rec,
 #define SDP_TEXT_BAD_MAX_RECORDS_LIST NULL
 #endif
 
+#ifndef SDP_TEXT_BAD_MAX_ATTR_LIST
+#define SDP_TEXT_BAD_MAX_ATTR_LIST   NULL
+#endif
+
 struct blacklist_entry
 {
     int ver;
@@ -486,7 +490,15 @@ static void process_service_search(tCONN_CB* p_ccb, uint16_t trans_num,
   /* Get the max replies we can send. Cap it at our max anyways. */
   BE_STREAM_TO_UINT16(max_replies, p_req);
 
-  if (max_replies > SDP_MAX_RECORDS) max_replies = SDP_MAX_RECORDS;
+    if (!max_replies)
+    {
+        sdpu_build_n_send_error (p_ccb, trans_num, SDP_INVALID_REQ_SYNTAX,
+                                 SDP_TEXT_BAD_MAX_ATTR_LIST);
+        return;
+    }
+
+    if (max_replies > SDP_MAX_RECORDS)
+        max_replies = SDP_MAX_RECORDS;
 
   if ((!p_req) || (p_req > p_req_end)) {
     sdpu_build_n_send_error(p_ccb, trans_num, SDP_INVALID_REQ_SYNTAX,
@@ -628,8 +640,15 @@ static void process_service_attr_req(tCONN_CB* p_ccb, uint16_t trans_num,
   /* Get the max list length we can send. Cap it at MTU size minus overhead */
   BE_STREAM_TO_UINT16(max_list_len, p_req);
 
-  if (max_list_len > (p_ccb->rem_mtu_size - SDP_MAX_ATTR_RSPHDR_LEN))
-    max_list_len = p_ccb->rem_mtu_size - SDP_MAX_ATTR_RSPHDR_LEN;
+    if (!max_list_len)
+    {
+        sdpu_build_n_send_error (p_ccb, trans_num, SDP_INVALID_REQ_SYNTAX,
+                                 SDP_TEXT_BAD_MAX_ATTR_LIST);
+        return;
+    }
+
+    if (max_list_len > (p_ccb->rem_mtu_size - SDP_MAX_ATTR_RSPHDR_LEN))
+        max_list_len = p_ccb->rem_mtu_size - SDP_MAX_ATTR_RSPHDR_LEN;
 
   p_req = sdpu_extract_attr_seq(p_req, param_len, &attr_seq);
 
@@ -955,8 +974,15 @@ static void process_service_search_attr_req(tCONN_CB* p_ccb, uint16_t trans_num,
   /* Get the max list length we can send. Cap it at our max list length. */
   BE_STREAM_TO_UINT16(max_list_len, p_req);
 
-  if (max_list_len > (p_ccb->rem_mtu_size - SDP_MAX_SERVATTR_RSPHDR_LEN))
-    max_list_len = p_ccb->rem_mtu_size - SDP_MAX_SERVATTR_RSPHDR_LEN;
+    if (!max_list_len)
+    {
+        sdpu_build_n_send_error (p_ccb, trans_num, SDP_INVALID_REQ_SYNTAX,
+                                 SDP_TEXT_BAD_MAX_ATTR_LIST);
+        return;
+    }
+
+    if (max_list_len > (p_ccb->rem_mtu_size - SDP_MAX_SERVATTR_RSPHDR_LEN))
+        max_list_len = p_ccb->rem_mtu_size - SDP_MAX_SERVATTR_RSPHDR_LEN;
 
   p_req = sdpu_extract_attr_seq(p_req, param_len, &attr_seq);
 

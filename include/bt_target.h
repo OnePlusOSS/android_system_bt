@@ -129,6 +129,15 @@
 #define BTA_HOST_INTERLEAVE_SEARCH FALSE
 #endif
 
+#ifndef BT_TRACE_BTIF
+#define BT_TRACE_BTIF  TRUE
+#endif
+
+
+#ifndef BT_TRACE_LATENCY_AUDIO
+#define BT_TRACE_LATENCY_AUDIO  TRUE
+#endif
+
 #ifndef BTA_DM_SDP_DB_SIZE
 #define BTA_DM_SDP_DB_SIZE 8000
 #endif
@@ -587,7 +596,7 @@
 
 /* Whether link wants to be the master or the slave. */
 #ifndef L2CAP_DESIRED_LINK_ROLE
-#define L2CAP_DESIRED_LINK_ROLE HCI_ROLE_MASTER
+#define L2CAP_DESIRED_LINK_ROLE HCI_ROLE_SLAVE
 #endif
 
 /* Include Non-Flushable Packet Boundary Flag feature of Lisbon */

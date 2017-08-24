@@ -472,9 +472,10 @@ uint8_t bta_hh_le_find_service_inst_by_battery_inst_id(tBTA_HH_DEV_CB* p_cb,
    for (srvc_inst_id = 0; srvc_inst_id < BTA_HH_LE_HID_SRVC_MAX; srvc_inst_id ++) {
       if (p_cb->hid_srvc[srvc_inst_id].in_use &&
            p_cb->hid_srvc[srvc_inst_id].incl_srvc_inst == ba_inst_id)  {
-           return srvc_inst_id;
+           return p_cb->hid_srvc[srvc_inst_id].srvc_inst_id;
       }
    }
+   APPL_TRACE_ERROR("battery service handle not found return invalid");
    return BTA_HH_IDX_INVALID;
 }
 
@@ -888,7 +889,7 @@ static void write_rpt_ctl_cfg_cb(uint16_t conn_id, tGATT_STATUS status,
  ******************************************************************************/
 bool bta_hh_le_write_rpt_clt_cfg(tBTA_HH_DEV_CB* p_cb) {
   uint8_t i;
-  tBTA_HH_LE_RPT* p_rpt = &p_cb->hid_srvc[0].report[p_cb->clt_cfg_idx];
+  tBTA_HH_LE_RPT* p_rpt = &p_cb->hid_srvc[p_cb->cur_srvc_index].report[p_cb->clt_cfg_idx];
 
   for (i = p_cb->clt_cfg_idx; i < BTA_HH_LE_RPT_MAX && p_rpt->in_use;
        i++, p_rpt++) {
@@ -905,7 +906,11 @@ bool bta_hh_le_write_rpt_clt_cfg(tBTA_HH_DEV_CB* p_cb) {
     }
   }
   p_cb->clt_cfg_idx = 0;
-//  p_cb->cur_srvc_index++;
+  p_cb->cur_srvc_index++;
+  if (p_cb->cur_srvc_index < BTA_HH_LE_HID_SRVC_MAX) {
+    bta_hh_le_write_rpt_clt_cfg(p_cb);
+    return TRUE;
+  }
   /* client configuration is completed, send open callback */
   if (p_cb->state == BTA_HH_W4_CONN_ST) {
     p_cb->disc_active &= ~BTA_HH_LE_DISC_HIDS;
@@ -1683,17 +1688,18 @@ void bta_hh_le_srvc_search_cmpl(tBTA_GATTC_SEARCH_CMPL* p_data) {
               (tBTA_GATTC_CHARACTERISTIC*) list_node(cn);
          if (p_char->uuid.uu.uuid16 == GATT_UUID_BATTERY_LEVEL &&
                    p_char->uuid.len == LEN_UUID_16) {
+            p_dev_cb->hid_srvc[srvc_index].incl_srvc_inst = service->handle;
             p_rpt = bta_hh_le_find_alloc_report_entry(p_dev_cb, service->s_handle,
                           GATT_UUID_BATTERY_LEVEL, p_char->handle);
             if (p_rpt == NULL)
-               APPL_TRACE_ERROR("Add battery report entry failed !!!");
+              APPL_TRACE_ERROR("Add battery report entry failed !!!");
 
             gatt_queue_read_op(GATT_READ_CHAR, p_dev_cb->conn_id, p_char->handle,
                         read_report_descriptor_ccc_cb,p_dev_cb);
-            if(p_rpt)
-                bta_hh_le_read_char_descriptor(p_dev_cb, p_char->handle,
-                          GATT_UUID_CHAR_CLIENT_CONFIG,
-                            read_report_descriptor_ccc_cb, p_rpt);
+            if (p_rpt)
+              bta_hh_le_read_char_descriptor(p_dev_cb, p_char->handle,
+                           GATT_UUID_CHAR_CLIENT_CONFIG,
+                           read_report_descriptor_ccc_cb, p_rpt);
           }
        }
     } else if (service->uuid.uu.uuid16 == UUID_SERVCLASS_SCAN_PARAM) {
@@ -2284,7 +2290,6 @@ static void bta_hh_gattc_callback(tBTA_GATTC_EVT event, tBTA_GATTC* p_data) {
 
   switch (event) {
     case BTA_GATTC_DEREG_EVT: /* 1 */
-      bta_hh_cleanup_disable(p_data->reg_oper.status);
       break;
 
     case BTA_GATTC_OPEN_EVT: /* 2 */

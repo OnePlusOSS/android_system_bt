@@ -66,4 +66,6 @@ void btif_debug_a2dp_dump(int fd);
 // Initialize sink variables
 void btif_a2dp_sink_on_init(void);
 
+// Honor remote start
+void btif_a2dp_honor_remote_start(void);
 #endif /* BTIF_A2DP_H */

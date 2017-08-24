@@ -375,17 +375,28 @@ extern fixed_queue_t* btu_general_alarm_queue;
  *  Functions
  *****************************************************************************/
 static btif_rc_device_cb_t* alloc_device() {
+
+  if (btif_rc_cb.rc_multi_cb == NULL) {
+    BTIF_TRACE_ERROR("%s: RC multicb is NULL", __func__);
+    return NULL;
+  }
   for (int idx = 0; idx < btif_max_rc_clients; idx++) {
     if (btif_rc_cb.rc_multi_cb[idx].rc_state ==
         BTRC_CONNECTION_STATE_DISCONNECTED) {
       return (&btif_rc_cb.rc_multi_cb[idx]);
     }
   }
+
   return NULL;
 }
 
 static btif_rc_device_cb_t* get_connected_device(int index) {
   BTIF_TRACE_DEBUG("%s: index: %d", __func__, index);
+
+  if (btif_rc_cb.rc_multi_cb == NULL) {
+    BTIF_TRACE_ERROR("%s: RC multicb is NULL", __func__);
+    return NULL;
+  }
   if (index > btif_max_rc_clients) {
     BTIF_TRACE_ERROR("%s: can't support more than %d connections", __func__,
                      btif_max_rc_clients);
@@ -401,6 +412,11 @@ static btif_rc_device_cb_t* get_connected_device(int index) {
 
 static int get_num_connected_devices() {
   int connected_devices = 0;
+
+  if (btif_rc_cb.rc_multi_cb == NULL) {
+    BTIF_TRACE_ERROR("%s: RC multicb is NULL", __func__);
+    return connected_devices;
+  }
   for (int idx = 0; idx < btif_max_rc_clients; idx++) {
     if (btif_rc_cb.rc_multi_cb[idx].rc_state ==
         BTRC_CONNECTION_STATE_CONNECTED) {
@@ -417,6 +433,10 @@ btif_rc_device_cb_t* btif_rc_get_device_by_bda(bt_bdaddr_t* bd_addr) {
                  bd_addr->address[0], bd_addr->address[1], bd_addr->address[2],
                  bd_addr->address[3], bd_addr->address[4], bd_addr->address[5]);
 
+  if (btif_rc_cb.rc_multi_cb == NULL) {
+    BTIF_TRACE_ERROR("%s: RC multicb is NULL", __func__);
+    return NULL;
+  }
   for (int idx = 0; idx < btif_max_rc_clients; idx++) {
     if ((btif_rc_cb.rc_multi_cb[idx].rc_state !=
          BTRC_CONNECTION_STATE_DISCONNECTED) &&
@@ -433,6 +453,10 @@ int btif_rc_get_idx_by_bda(bt_bdaddr_t* bd_addr) {
                  bd_addr->address[0], bd_addr->address[1], bd_addr->address[2],
                  bd_addr->address[3], bd_addr->address[4], bd_addr->address[5]);
 
+  if (btif_rc_cb.rc_multi_cb == NULL) {
+    BTIF_TRACE_ERROR("%s: RC multicb is NULL", __func__);
+    return -1;
+  }
   for (int idx = 0; idx < btif_max_rc_clients; idx++) {
     if ((btif_rc_cb.rc_multi_cb[idx].rc_state !=
          BTRC_CONNECTION_STATE_DISCONNECTED) &&
@@ -446,6 +470,11 @@ int btif_rc_get_idx_by_bda(bt_bdaddr_t* bd_addr) {
 
 btif_rc_device_cb_t* btif_rc_get_device_by_handle(uint8_t handle) {
   BTIF_TRACE_DEBUG("%s: handle: 0x%x", __func__, handle);
+
+  if (btif_rc_cb.rc_multi_cb == NULL) {
+    BTIF_TRACE_ERROR("%s: RC multicb is NULL", __func__);
+    return NULL;
+  }
   for (int idx = 0; idx < btif_max_rc_clients; idx++) {
     if ((btif_rc_cb.rc_multi_cb[idx].rc_state !=
          BTRC_CONNECTION_STATE_DISCONNECTED) &&
@@ -665,7 +694,7 @@ void btif_rc_clear_playing_state(bool state) {
  *
  ***************************************************************************/
 void handle_rc_browse_connect(tBTA_AV_RC_BROWSE_OPEN* p_rc_br_open) {
-  BTIF_TRACE_DEBUG("%s: rc_handle %d status %d", __func__,
+  BTIF_TRACE_IMP("%s: rc_handle %d status %d", __func__,
                    p_rc_br_open->rc_handle, p_rc_br_open->status);
   btif_rc_device_cb_t* p_dev =
       btif_rc_get_device_by_handle(p_rc_br_open->rc_handle);
@@ -761,7 +790,7 @@ void handle_rc_connect(tBTA_AV_RC_OPEN* p_rc_open) {
 void handle_rc_disconnect(tBTA_AV_RC_CLOSE* p_rc_close) {
   btif_rc_device_cb_t* p_dev = NULL;
   tBTA_AV_FEAT rc_features = 0;
-  BTIF_TRACE_DEBUG("%s: rc_handle: %d", __func__, p_rc_close->rc_handle);
+  BTIF_TRACE_IMP("%s: rc_handle: %d", __func__, p_rc_close->rc_handle);
 
   p_dev = btif_rc_get_device_by_handle(p_rc_close->rc_handle);
   if (p_dev == NULL) {
@@ -1152,7 +1181,7 @@ void handle_rc_metamsg_cmd(tBTA_AV_META_MSG* pmeta_msg) {
  **
  ***************************************************************************/
 void btif_rc_handler(tBTA_AV_EVT event, tBTA_AV* p_data) {
-  BTIF_TRACE_DEBUG("%s: event: %s", __func__, dump_rc_event(event));
+  BTIF_TRACE_IMP("%s: event: %s", __func__, dump_rc_event(event));
   btif_rc_device_cb_t* p_dev = NULL;
   switch (event) {
     case BTA_AV_RC_OPEN_EVT: {
@@ -1616,7 +1645,7 @@ static uint8_t fill_attribute_id_array(
 static void btif_rc_upstreams_evt(uint16_t event, tAVRC_COMMAND* pavrc_cmd,
                                   uint8_t ctype, uint8_t label,
                                   btif_rc_device_cb_t* p_dev) {
-  BTIF_TRACE_EVENT("%s: pdu: %s handle: 0x%x ctype: %x label: %x event ID: %x",
+  BTIF_TRACE_IMP("%s: pdu: %s handle: 0x%x ctype: %x label: %x event ID: %x",
                    __func__, dump_rc_pdu(pavrc_cmd->pdu), p_dev->rc_handle,
                    ctype, label, pavrc_cmd->reg_notif.event_id);
   bt_bdaddr_t rc_addr;
@@ -1900,7 +1929,7 @@ static void btif_rc_upstreams_rsp_evt(uint16_t event,
                                       tAVRC_RESPONSE* pavrc_resp, uint8_t ctype,
                                       uint8_t label,
                                       btif_rc_device_cb_t* p_dev) {
-  BTIF_TRACE_EVENT("%s: pdu: %s: handle: 0x%x ctype: %x label: %x", __func__,
+  BTIF_TRACE_IMP("%s: pdu: %s: handle: 0x%x ctype: %x label: %x", __func__,
                    dump_rc_pdu(pavrc_resp->pdu), p_dev->rc_handle, ctype,
                    label);
   bt_bdaddr_t rc_addr;
@@ -1960,10 +1989,13 @@ static bt_status_t init(btrc_callbacks_t* callbacks, int max_connections) {
      btif_max_rc_clients = BTIF_RC_NUM_CONN;
   }
 
-  if (btif_rc_cb.rc_multi_cb != NULL)
-    delete[] btif_rc_cb.rc_multi_cb;
+  if (btif_rc_cb.rc_multi_cb != NULL) {
+    osi_free(btif_rc_cb.rc_multi_cb);
+    btif_rc_cb.rc_multi_cb = NULL;
+  }
 
-  btif_rc_cb.rc_multi_cb = new  btif_rc_device_cb_t[btif_max_rc_clients];
+  btif_rc_cb.rc_multi_cb = (btif_rc_device_cb_t *)
+                 osi_malloc(btif_max_rc_clients * sizeof(btif_rc_device_cb_t));
   for (int idx = 0; idx < btif_max_rc_clients; idx++) {
     memset(&btif_rc_cb.rc_multi_cb[idx], 0,
            sizeof(btif_rc_cb.rc_multi_cb[idx]));
@@ -1993,10 +2025,13 @@ static bt_status_t init_ctrl(btrc_ctrl_callbacks_t* callbacks) {
   if (bt_rc_ctrl_callbacks) return BT_STATUS_DONE;
 
   bt_rc_ctrl_callbacks = callbacks;
-  if (btif_rc_cb.rc_multi_cb != NULL)
-    delete[] btif_rc_cb.rc_multi_cb;
+  if (btif_rc_cb.rc_multi_cb != NULL) {
+    osi_free(btif_rc_cb.rc_multi_cb);
+    btif_rc_cb.rc_multi_cb = NULL;
+  }
 
-  btif_rc_cb.rc_multi_cb = new  btif_rc_device_cb_t[btif_max_rc_clients];
+  btif_rc_cb.rc_multi_cb = (btif_rc_device_cb_t *)
+                 osi_malloc(btif_max_rc_clients * sizeof(btif_rc_device_cb_t));
   for (int idx = 0; idx < btif_max_rc_clients; idx++) {
     memset(&btif_rc_cb.rc_multi_cb[idx], 0,
            sizeof(btif_rc_cb.rc_multi_cb[idx]));
@@ -2044,6 +2079,10 @@ static bt_status_t get_play_status_rsp(bt_bdaddr_t* bd_addr,
   int av_index;
 
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev is NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
   BTIF_TRACE_DEBUG("%s: song len %d song pos %d", __func__, song_len, song_pos);
   CHECK_RC_CONNECTED(p_dev);
@@ -2100,6 +2139,10 @@ static bt_status_t get_element_attr_rsp(bt_bdaddr_t* bd_addr, uint8_t num_attr,
   uint32_t i;
   tAVRC_ATTR_ENTRY element_attrs[BTRC_MAX_ELEM_ATTR_SIZE];
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev is NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
   BTIF_TRACE_DEBUG("%s", __func__);
   CHECK_RC_CONNECTED(p_dev);
@@ -2312,7 +2355,7 @@ static bt_status_t register_notification_rsp(
                                                bd_addr));
   }
 
-  BTIF_TRACE_EVENT("%s: event_id: %s", __func__,
+  BTIF_TRACE_IMP("%s: event_id: %s", __func__,
                    dump_rc_notification_event_id(event_id));
   std::unique_lock<std::mutex> lock(btif_rc_cb.lock);
 
@@ -2442,6 +2485,11 @@ static bt_status_t get_folder_items_list_rsp(bt_bdaddr_t* bd_addr,
   tAVRC_STS status = AVRC_STS_NO_ERROR;
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
   btrc_folder_items_t* cur_item = NULL;
+
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev is NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
   BTIF_TRACE_DEBUG("%s: uid_counter %d num_items %d", __func__, uid_counter,
                    num_items);
@@ -2597,6 +2645,10 @@ static bt_status_t set_addressed_player_rsp(bt_bdaddr_t* bd_addr,
                                             btrc_status_t rsp_status) {
   tAVRC_RESPONSE avrc_rsp;
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev is NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
   BTIF_TRACE_DEBUG("%s", __func__);
   CHECK_RC_CONNECTED(p_dev);
@@ -2645,6 +2697,10 @@ static bt_status_t set_browsed_player_rsp(bt_bdaddr_t* bd_addr,
   unsigned int item_cnt;
   tAVRC_STS status = AVRC_STS_NO_ERROR;
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev is NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
   CHECK_RC_CONNECTED(p_dev);
 
@@ -2754,6 +2810,10 @@ static bt_status_t change_path_rsp(bt_bdaddr_t* bd_addr,
                                    uint32_t num_items) {
   tAVRC_RESPONSE avrc_rsp;
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev is NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
   BTIF_TRACE_DEBUG("%s", __func__);
   CHECK_RC_CONNECTED(p_dev);
@@ -2786,6 +2846,10 @@ static bt_status_t search_rsp(bt_bdaddr_t* bd_addr, btrc_status_t rsp_status,
                               uint32_t uid_counter, uint32_t num_items) {
   tAVRC_RESPONSE avrc_rsp;
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev is NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
   BTIF_TRACE_DEBUG("%s", __func__);
   CHECK_RC_CONNECTED(p_dev);
@@ -2818,11 +2882,15 @@ static bt_status_t search_rsp(bt_bdaddr_t* bd_addr, btrc_status_t rsp_status,
 static bt_status_t get_item_attr_rsp(bt_bdaddr_t* bd_addr,
                                      btrc_status_t rsp_status, uint8_t num_attr,
                                      btrc_element_attr_val_t* p_attrs) {
+  BTIF_TRACE_DEBUG("%s", __func__);
   tAVRC_RESPONSE avrc_rsp;
   tAVRC_ATTR_ENTRY item_attrs[BTRC_MAX_ELEM_ATTR_SIZE];
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev is NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
-  BTIF_TRACE_DEBUG("%s", __func__);
   CHECK_RC_CONNECTED(p_dev);
 
   memset(item_attrs, 0, sizeof(tAVRC_ATTR_ENTRY) * num_attr);
@@ -2859,10 +2927,14 @@ static bt_status_t get_item_attr_rsp(bt_bdaddr_t* bd_addr,
  **************************************************************************/
 static bt_status_t add_to_now_playing_rsp(bt_bdaddr_t* bd_addr,
                                           btrc_status_t rsp_status) {
+  BTIF_TRACE_DEBUG("%s", __func__);
   tAVRC_RESPONSE avrc_rsp;
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev is NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
-  BTIF_TRACE_DEBUG("%s", __func__);
   CHECK_RC_CONNECTED(p_dev);
 
   avrc_rsp.add_to_play.pdu = AVRC_PDU_ADD_TO_NOW_PLAYING;
@@ -2893,6 +2965,10 @@ static bt_status_t play_item_rsp(bt_bdaddr_t* bd_addr,
                                  btrc_status_t rsp_status) {
   tAVRC_RESPONSE avrc_rsp;
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev is NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
   BTIF_TRACE_DEBUG("%s", __func__);
   CHECK_RC_CONNECTED(p_dev);
@@ -2927,6 +3003,10 @@ static bt_status_t get_total_num_of_items_rsp(bt_bdaddr_t* bd_addr,
                                               uint32_t num_items) {
   tAVRC_RESPONSE avrc_rsp;
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev is NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
   BTIF_TRACE_DEBUG("%s", __func__);
   CHECK_RC_CONNECTED(p_dev);
@@ -3204,6 +3284,10 @@ bool iterate_supported_event_list_for_timeout(void* data, void* cb_data) {
   uint8_t label = cntxt->label & 0xFF;
   bdcpy(bd_addr.address, cntxt->rc_addr);
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(&bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev is NULL", __func__);
+    return false;
+  }
   btif_rc_supported_event_t* p_event = (btif_rc_supported_event_t*)data;
 
   if (p_event->label == label) {
@@ -3579,6 +3663,10 @@ static void handle_get_capability_response(tBTA_AV_META_MSG* pmeta_msg,
   int xx = 0;
   btif_rc_device_cb_t* p_dev =
       btif_rc_get_device_by_handle(pmeta_msg->rc_handle);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev is NULL", __func__);
+    return;
+  }
 
   /* Todo: Do we need to retry on command timeout */
   if (p_rsp->status != AVRC_STS_NO_ERROR) {
@@ -4241,16 +4329,16 @@ static void handle_get_elem_attr_response(tBTA_AV_META_MSG* pmeta_msg,
   btif_rc_device_cb_t* p_dev =
       btif_rc_get_device_by_handle(pmeta_msg->rc_handle);
 
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return;
+  }
+
   if (p_rsp->status == AVRC_STS_NO_ERROR) {
     bt_bdaddr_t rc_addr;
     size_t buf_size = p_rsp->num_attrs * sizeof(btrc_element_attr_val_t);
     btrc_element_attr_val_t* p_attr =
         (btrc_element_attr_val_t*)osi_calloc(buf_size);
-
-    if (p_dev == NULL) {
-      BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
-      return;
-    }
 
     bdcpy(rc_addr.address, p_dev->rc_addr);
 
@@ -4359,6 +4447,10 @@ static void handle_get_folder_items_response(tBTA_AV_META_MSG* pmeta_msg,
                                              tAVRC_GET_ITEMS_RSP* p_rsp) {
   btif_rc_device_cb_t* p_dev =
       btif_rc_get_device_by_handle(pmeta_msg->rc_handle);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return;
+  }
   bt_bdaddr_t rc_addr;
   bdcpy(rc_addr.address, p_dev->rc_addr);
 
@@ -4597,6 +4689,10 @@ static void handle_change_path_response(tBTA_AV_META_MSG* pmeta_msg,
                                         tAVRC_CHG_PATH_RSP* p_rsp) {
   btif_rc_device_cb_t* p_dev =
       btif_rc_get_device_by_handle(pmeta_msg->rc_handle);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return;
+  }
   bt_bdaddr_t rc_addr;
   bdcpy(rc_addr.address, p_dev->rc_addr);
 
@@ -4622,6 +4718,10 @@ static void handle_set_browsed_player_response(tBTA_AV_META_MSG* pmeta_msg,
                                                tAVRC_SET_BR_PLAYER_RSP* p_rsp) {
   btif_rc_device_cb_t* p_dev =
       btif_rc_get_device_by_handle(pmeta_msg->rc_handle);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return;
+  }
   bt_bdaddr_t rc_addr;
   bdcpy(rc_addr.address, p_dev->rc_addr);
 
@@ -4834,10 +4934,9 @@ static void cleanup() {
   if (btif_rc_cb.rc_multi_cb != NULL) {
     for (int idx = 0; idx < btif_max_rc_clients; idx++) {
       alarm_free(btif_rc_cb.rc_multi_cb[idx].rc_play_status_timer);
-      memset(&btif_rc_cb.rc_multi_cb[idx], 0,
-             sizeof(btif_rc_cb.rc_multi_cb[idx]));
     }
-    delete[]  btif_rc_cb.rc_multi_cb;
+    osi_free(btif_rc_cb.rc_multi_cb);
+    btif_rc_cb.rc_multi_cb = NULL;
   }
 
   BTIF_TRACE_EVENT("%s: completed", __func__);
@@ -4862,13 +4961,11 @@ static void cleanup_ctrl() {
   if (btif_rc_cb.rc_multi_cb != NULL) {
     for (int idx = 0; idx < btif_max_rc_clients; idx++) {
       alarm_free(btif_rc_cb.rc_multi_cb[idx].rc_play_status_timer);
-      memset(&btif_rc_cb.rc_multi_cb[idx], 0,
-             sizeof(btif_rc_cb.rc_multi_cb[idx]));
     }
-    delete[]  btif_rc_cb.rc_multi_cb;
+    osi_free(btif_rc_cb.rc_multi_cb);
+    btif_rc_cb.rc_multi_cb = NULL;
   }
 
-  memset(&btif_rc_cb.rc_multi_cb, 0, sizeof(btif_rc_cb.rc_multi_cb));
   BTIF_TRACE_EVENT("%s: completed", __func__);
 }
 
@@ -4981,6 +5078,10 @@ static bt_status_t get_player_app_setting_cmd(uint8_t num_attrib,
 static bt_status_t get_playback_state_cmd(bt_bdaddr_t* bd_addr) {
   BTIF_TRACE_DEBUG("%s", __func__);
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
   return get_play_status_cmd(p_dev);
 }
 
@@ -5064,6 +5165,10 @@ static bt_status_t change_folder_path_cmd(bt_bdaddr_t* bd_addr,
                                           uint8_t direction, uint8_t* uid) {
   BTIF_TRACE_DEBUG("%s: direction %d", __func__, direction);
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
   CHECK_RC_CONNECTED(p_dev);
   CHECK_BR_CONNECTED(p_dev);
 
@@ -5115,6 +5220,10 @@ static bt_status_t change_folder_path_cmd(bt_bdaddr_t* bd_addr,
 static bt_status_t set_browsed_player_cmd(bt_bdaddr_t* bd_addr, uint16_t id) {
   BTIF_TRACE_DEBUG("%s: id %d", __func__, id);
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
   CHECK_RC_CONNECTED(p_dev);
   CHECK_BR_CONNECTED(p_dev);
 
@@ -5163,6 +5272,10 @@ static bt_status_t set_addressed_player_cmd(bt_bdaddr_t* bd_addr, uint16_t id) {
   BTIF_TRACE_DEBUG("%s: id %d", __func__, id);
 
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
   CHECK_RC_CONNECTED(p_dev);
   CHECK_BR_CONNECTED(p_dev);
 
@@ -5216,6 +5329,10 @@ static bt_status_t get_folder_items_cmd(bt_bdaddr_t* bd_addr, uint8_t scope,
                                         uint8_t start_item, uint8_t end_item) {
   /* Check that both avrcp and browse channel are connected. */
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
   BTIF_TRACE_DEBUG("%s", __func__);
   CHECK_RC_CONNECTED(p_dev);
   CHECK_BR_CONNECTED(p_dev);
@@ -5269,6 +5386,10 @@ static bt_status_t change_player_app_setting(bt_bdaddr_t* bd_addr,
                                              uint8_t* attrib_vals) {
   BTIF_TRACE_DEBUG("%s: num_attrib: %d", __func__, num_attrib);
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
   CHECK_RC_CONNECTED(p_dev);
 
   tAVRC_COMMAND avrc_cmd = {0};
@@ -5301,6 +5422,10 @@ static bt_status_t play_item_cmd(bt_bdaddr_t* bd_addr, uint8_t scope,
                                  uint8_t* uid, uint16_t uid_counter) {
   BTIF_TRACE_DEBUG("%s: scope %d uid_counter %d", __func__, scope, uid_counter);
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
   CHECK_RC_CONNECTED(p_dev);
   CHECK_BR_CONNECTED(p_dev);
 
@@ -5473,6 +5598,10 @@ static bt_status_t set_volume_rsp(bt_bdaddr_t* bd_addr, uint8_t abs_vol,
   tAVRC_RESPONSE avrc_rsp;
   BT_HDR* p_msg = NULL;
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
   CHECK_RC_CONNECTED(p_dev);
 
@@ -5518,6 +5647,10 @@ static bt_status_t volume_change_notification_rsp(
   BTIF_TRACE_DEBUG("%s: rsp_type: %d abs_vol: %d", __func__, rsp_type, abs_vol);
 
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
   CHECK_RC_CONNECTED(p_dev);
 
@@ -5564,6 +5697,10 @@ static bt_status_t send_groupnavigation_cmd(bt_bdaddr_t* bd_addr,
   BTIF_TRACE_DEBUG("%s: key-code: %d, key-state: %d", __func__, key_code,
                    key_state);
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
   CHECK_RC_CONNECTED(p_dev);
 
@@ -5607,6 +5744,10 @@ static bt_status_t send_passthrough_cmd(bt_bdaddr_t* bd_addr, uint8_t key_code,
   btif_rc_device_cb_t* p_dev = NULL;
   BTIF_TRACE_ERROR("%s: calling btif_rc_get_device_by_bda", __func__);
   p_dev = btif_rc_get_device_by_bda(bd_addr);
+  if (p_dev == NULL) {
+    BTIF_TRACE_ERROR("%s: p_dev NULL", __func__);
+    return BT_STATUS_FAIL;
+  }
 
   CHECK_RC_CONNECTED(p_dev);
 

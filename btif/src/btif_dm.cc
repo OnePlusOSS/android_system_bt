@@ -55,6 +55,7 @@
 #include "btif_api.h"
 #include "btif_config.h"
 #include "btif_dm.h"
+#include "btif_av.h"
 #include "btif_hd.h"
 #include "btif_hh.h"
 #include "btif_sdp.h"
@@ -262,6 +263,7 @@ extern void btif_av_move_idle(bt_bdaddr_t bd_addr);
 extern bt_status_t btif_hd_execute_service(bool b_enable);
 extern void btif_av_trigger_suspend();
 extern bool btif_av_get_ongoing_multicast();
+extern void btif_av_peer_config_dump();
 
 /******************************************************************************
  *  Functions
@@ -1187,28 +1189,29 @@ static void btif_dm_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
     }
   }
 
-  // We could have received a new link key without going through the pairing
-  // flow.  If so, we don't want to perform SDP or any other operations on the
-  // authenticated device. Also, make sure that the link key is not derived from
-  // secure LTK, because we will need to perform SDP in case of link key
-  // derivation to allow bond state change notification for the BR/EDR transport
-  // so that the subsequent BR/EDR connections to the remote can use the derived
-  // link key.
-  if ((bdcmp(p_auth_cmpl->bd_addr, pairing_cb.bd_addr) != 0) &&
-      (!pairing_cb.ble.is_penc_key_rcvd)) {
-    char address[32];
-    bt_bdaddr_t bt_bdaddr;
-
-    memcpy(bt_bdaddr.address, p_auth_cmpl->bd_addr, sizeof(bt_bdaddr.address));
-    bdaddr_to_string(&bt_bdaddr, address, sizeof(address));
-    LOG_INFO(LOG_TAG,
-             "%s skipping SDP since we did not initiate pairing to %s.",
-             __func__, address);
-    return;
-  }
-
   // Skip SDP for certain  HID Devices
   if (p_auth_cmpl->success) {
+
+    // We could have received a new link key without going through the pairing
+    // flow.  If so, we don't want to perform SDP or any other operations on the
+    // authenticated device. Also, make sure that the link key is not derived from
+    // secure LTK, because we will need to perform SDP in case of link key
+    // derivation to allow bond state change notification for the BR/EDR transport
+    // so that the subsequent BR/EDR connections to the remote can use the derived
+    // link key.
+    if ((bdcmp(p_auth_cmpl->bd_addr, pairing_cb.bd_addr) != 0) &&
+        (!pairing_cb.ble.is_penc_key_rcvd)) {
+      char address[32];
+      bt_bdaddr_t bt_bdaddr;
+
+      memcpy(bt_bdaddr.address, p_auth_cmpl->bd_addr, sizeof(bt_bdaddr.address));
+      bdaddr_to_string(&bt_bdaddr, address, sizeof(address));
+      LOG_INFO(LOG_TAG,
+               "%s skipping SDP since we did not initiate pairing to %s.",
+               __func__, address);
+      return;
+    }
+
     btif_storage_set_remote_addr_type(&bd_addr, p_auth_cmpl->addr_type);
     btif_update_remote_properties(p_auth_cmpl->bd_addr, p_auth_cmpl->bd_name,
                                   NULL, p_auth_cmpl->dev_type);
@@ -1287,7 +1290,11 @@ static void btif_dm_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
       /* Dont fail the bonding for key missing error as stack retry security */
       case HCI_ERR_KEY_MISSING:
         btif_storage_remove_bonded_device(&bd_addr);
-        return;
+        if (p_auth_cmpl->is_sm4_dev) {
+          return;
+        } else {
+          BTIF_TRACE_WARNING("%s() legacy remote ,move bond state to none", __FUNCTION__);
+        }
 
       /* map the auth failure codes, so we can retry pairing if necessary */
       case HCI_ERR_AUTH_FAILURE:
@@ -2102,6 +2109,19 @@ static void btif_dm_upstreams_evt(uint16_t event, char* p_param) {
       HAL_CBACK(bt_hal_cbacks, energy_info_cb, &energy_info, data);
       osi_free(data);
       break;
+    }
+
+    case BTA_DM_PKT_TYPE_CHG_EVT: {
+      // update streaming bit rate from av
+      break;
+    }
+
+    case BTA_DM_SOC_LOGGING_EVT: {
+      if (p_data->soc_logging.soc_log_id == (LOG_ID_STATS_A2DP)) {
+        BTIF_TRACE_WARNING( " event(%d),dump a2dp configuration", event);
+        btif_av_peer_config_dump();
+      }
+        break;
     }
 
     case BTA_DM_AUTHORIZE_EVT:

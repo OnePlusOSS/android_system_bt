@@ -1918,6 +1918,28 @@ extern tBTM_EIR_SEARCH_RESULT BTM_HasInquiryEirService(
 
 /*******************************************************************************
  *
+ * Function         BTM_SetWifiState
+ *
+ * Description      This function sets wifi state.
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+extern void BTM_SetWifiState(bool status);
+
+/*******************************************************************************
+ *
+ * Function         BTM_GetWifiState
+ *
+ * Description      This function gets wifi state.
+ *
+ * Returns          wifi connected status
+ *
+ ******************************************************************************/
+extern bool BTM_GetWifiState(void);
+
+/*******************************************************************************
+ *
  * Function         BTM_AddEirService
  *
  * Description      This function is called to add a service in the bit map UUID

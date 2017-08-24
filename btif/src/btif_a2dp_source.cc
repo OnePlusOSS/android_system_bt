@@ -56,7 +56,7 @@ using system_bt_osi::A2dpSessionMetrics;
  * layers we might need to temporarily buffer up data.
  */
 #define MAX_OUTPUT_A2DP_FRAME_QUEUE_SZ (MAX_PCM_FRAME_NUM_PER_TICK * 2)
-
+#define BTIF_REMOTE_START_TOUT 3000
 enum {
   BTIF_A2DP_SOURCE_STATE_OFF,
   BTIF_A2DP_SOURCE_STATE_STARTING_UP,
@@ -192,7 +192,7 @@ static void log_tstamps_us(const char* comment, uint64_t timestamp_us);
 static void update_scheduling_stats(scheduling_stats_t* stats, uint64_t now_us,
                                     uint64_t expected_delta);
 static void btm_read_rssi_cb(void* data);
-
+static void btif_a2dp_source_remote_start_timeout(void* context);
 UNUSED_ATTR static const char* dump_media_event(uint16_t event) {
   switch (event) {
     CASE_RETURN_STR(BTIF_MEDIA_AUDIO_TX_START)
@@ -357,9 +357,40 @@ bool btif_a2dp_source_is_remote_start(void) {
 }
 
 void btif_a2dp_source_cancel_remote_start(void) {
+  if (btif_a2dp_source_cb.remote_start_alarm != NULL) {
+    alarm_free(btif_a2dp_source_cb.remote_start_alarm);
+    btif_a2dp_source_cb.remote_start_alarm = NULL;
+  }
+  return;
+}
+
+static void btif_media_remote_start_alarm_cb(UNUSED_ATTR void *context) {
+  thread_post(btif_a2dp_source_cb.worker_thread,
+              btif_a2dp_source_remote_start_timeout, NULL);
+}
+
+static void btif_a2dp_source_remote_start_timeout(UNUSED_ATTR void* context) {
+  APPL_TRACE_DEBUG("%s: Suspend stream request to Av", __func__);
   alarm_free(btif_a2dp_source_cb.remote_start_alarm);
   btif_a2dp_source_cb.remote_start_alarm = NULL;
+  btif_dispatch_sm_event(BTIF_AV_SUSPEND_STREAM_REQ_EVT, NULL, 0);
   return;
+}
+
+void btif_a2dp_source_on_remote_start() {
+  // cancel any existing remote start timer
+  btif_a2dp_source_cancel_remote_start();
+
+  // initiate remote start timer
+  btif_a2dp_source_cb.remote_start_alarm = alarm_new("btif.remote_start_task");
+  if (!btif_a2dp_source_cb.remote_start_alarm) {
+    LOG_ERROR(LOG_TAG,"%s:unable to allocate media alarm",__func__);
+    btif_dispatch_sm_event(BTIF_AV_SUSPEND_STREAM_REQ_EVT, NULL, 0);
+    return;
+  }
+  alarm_set(btif_a2dp_source_cb.remote_start_alarm, BTIF_REMOTE_START_TOUT,
+            btif_media_remote_start_alarm_cb, NULL);
+  APPL_TRACE_DEBUG("%s: Remote start timer started", __func__);
 }
 
 static void btif_a2dp_source_command_ready(fixed_queue_t* queue,
@@ -591,11 +622,13 @@ void btif_a2dp_source_on_suspended(tBTA_AV_SUSPEND* p_av_suspend) {
   if (btif_a2dp_source_state == BTIF_A2DP_SOURCE_STATE_OFF) return;
 
   /* check for status failures */
-  if (p_av_suspend->status != BTA_AV_SUCCESS) {
-    if (p_av_suspend->initiator) {
-      APPL_TRACE_WARNING("%s: A2DP suspend request failed: status = %d",
+  if (p_av_suspend != NULL) {
+    if (p_av_suspend->status != BTA_AV_SUCCESS) {
+      if (p_av_suspend->initiator) {
+        APPL_TRACE_WARNING("%s: A2DP suspend request failed: status = %d",
                          __func__, p_av_suspend->status);
-      btif_a2dp_command_ack(A2DP_CTRL_ACK_FAILURE);
+        btif_a2dp_command_ack(A2DP_CTRL_ACK_FAILURE);
+      }
     }
   }
 
@@ -654,7 +687,6 @@ static void btif_a2dp_source_audio_tx_stop_event(void) {
   btif_a2dp_source_cb.media_alarm = NULL;
   alarm_free(btif_a2dp_source_cb.remote_start_alarm);
   btif_a2dp_source_cb.remote_start_alarm = NULL;
-
   UIPC_Close(UIPC_CH_ID_AV_AUDIO);
 
   /*

@@ -103,6 +103,9 @@ extern void btm_read_link_quality_complete(uint8_t* p);
 extern tBTM_STATUS btm_set_packet_types(tACL_CONN* p, uint16_t pkt_types);
 extern void btm_process_clk_off_comp_evt(uint16_t hci_handle,
                                          uint16_t clock_offset);
+extern void btm_process_pkt_type_change_evt (uint16_t hci_handle,
+                                             uint16_t pkt_type);
+extern void btm_process_soc_logging_evt (uint16_t soc_log_id);
 extern void btm_acl_role_changed(uint8_t hci_status, BD_ADDR bd_addr,
                                  uint8_t new_role);
 extern void btm_blacklist_role_change_device (BD_ADDR bd_addr,
@@ -204,6 +207,7 @@ extern tBTM_SEC_DEV_REC* btm_find_or_alloc_dev(BD_ADDR bd_addr);
 extern tBTM_SEC_DEV_REC* btm_find_dev_by_handle(uint16_t handle);
 extern tBTM_BOND_TYPE btm_get_bond_type_dev(BD_ADDR bd_addr);
 extern bool btm_set_bond_type_dev(BD_ADDR bd_addr, tBTM_BOND_TYPE bond_type);
+extern bool btm_is_sm4_dev(BD_ADDR bd_addr);
 
 /* Internal functions provided by btm_sec.cc
  *********************************************

@@ -28,6 +28,8 @@
 
 #include <base/logging.h>
 #include <inttypes.h>
+#include <utils/Log.h>
+#include <string.h>
 
 #include "a2dp_aac.h"
 #include "a2dp_sbc.h"
@@ -403,19 +405,37 @@ std::string A2dpCodecConfig::codecChannelMode2Str(
 }
 
 void A2dpCodecConfig::debug_codec_dump(int fd) {
-  std::string result;
-  dprintf(fd, "\nA2DP %s State:\n", name().c_str());
-  dprintf(fd, "  Priority: %d\n", codecPriority());
-  dprintf(fd, "  Encoder interval (ms): %" PRIu64 "\n", encoderIntervalMs());
+  if(fd == -1) {
+     std::string result;
+     ALOGE("\nA2DP %s State:\n", name().c_str());
+     ALOGE("  Priority: %d\n", codecPriority());
+     ALOGE("  Encoder interval (ms): %" PRIu64 "\n", encoderIntervalMs());
 
-  result = codecConfig2Str(getCodecConfig());
-  dprintf(fd, "  Config: %s\n", result.c_str());
+     result = codecConfig2Str(getCodecConfig());
+     ALOGE("  Config: %s\n", result.c_str());
 
-  result = codecConfig2Str(getCodecSelectableCapability());
-  dprintf(fd, "  Selectable: %s\n", result.c_str());
+     result = codecConfig2Str(getCodecSelectableCapability());
+     ALOGE("  Selectable: %s\n", result.c_str());
 
-  result = codecConfig2Str(getCodecLocalCapability());
-  dprintf(fd, "  Local capability: %s\n", result.c_str());
+     result = codecConfig2Str(getCodecLocalCapability());
+     ALOGE("  Local capability: %s\n", result.c_str());
+
+  }
+  else{
+     std::string result;
+     dprintf(fd, "\nA2DP %s State:\n", name().c_str());
+     dprintf(fd, "  Priority: %d\n", codecPriority());
+     dprintf(fd, "  Encoder interval (ms): %" PRIu64 "\n", encoderIntervalMs());
+
+     result = codecConfig2Str(getCodecConfig());
+     dprintf(fd, "  Config: %s\n", result.c_str());
+
+     result = codecConfig2Str(getCodecSelectableCapability());
+     dprintf(fd, "  Selectable: %s\n", result.c_str());
+
+     result = codecConfig2Str(getCodecLocalCapability());
+     dprintf(fd, "  Local capability: %s\n", result.c_str());
+  }
 }
 
 //
@@ -1366,3 +1386,4 @@ bool A2DP_IsCodecEnabledInOffload(btav_a2dp_codec_index_t codec_index) {
   }
   return codec_status;
 }
+

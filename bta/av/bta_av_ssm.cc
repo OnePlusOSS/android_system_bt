@@ -532,7 +532,7 @@ void bta_av_ssm_execute(tBTA_AV_SCB* p_scb, uint16_t event,
     }
   }
 
-  APPL_TRACE_VERBOSE("%s(): AV Sevent(0x%x)=0x%x(%s) state=%d(%s)", __func__,
+  APPL_TRACE_IMP("%s(): AV Sevent(0x%x)=0x%x(%s) state=%d(%s)", __func__,
                      p_scb->hndl, event, bta_av_evt_code(event), p_scb->state,
                      bta_av_sst_code(p_scb->state));
 

@@ -280,6 +280,7 @@ void avdt_scb_hdl_pkt_no_frag(tAVDT_SCB* p_scb, tAVDT_SCB_EVT* p_data) {
     if (p_scb->cs.p_sink_data_cback != NULL) {
       /* report sequence number */
       p_data->p_pkt->layer_specific = seq;
+      APPL_TRACE_LATENCY_AUDIO("AVDTP Recv Packet, seq number %d", seq);
       (*p_scb->cs.p_sink_data_cback)(avdt_scb_to_hdl(p_scb), p_data->p_pkt,
                                      time_stamp,
                                      (uint8_t)(m_pt | (marker << 7)));
@@ -577,6 +578,8 @@ bool avdt_check_sep_state(tAVDT_SCB *p_scb) {
  ******************************************************************************/
 void avdt_scb_hdl_setconfig_cmd(tAVDT_SCB* p_scb, tAVDT_SCB_EVT* p_data) {
   tAVDT_CFG* p_cfg;
+  AVDT_TRACE_WARNING("avdt_scb_hdl_setconfig_cmd: SCB in use: %d, Conn in progress: %d, avdt_check_sep_state: %d",
+       p_scb->in_use, avdt_cb.conn_in_progress, avdt_check_sep_state(p_scb));
 
   if ((!p_scb->in_use) && !(avdt_check_sep_state(p_scb)) &&
       (!avdt_cb.conn_in_progress)) {

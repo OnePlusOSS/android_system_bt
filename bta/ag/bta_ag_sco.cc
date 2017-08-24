@@ -126,7 +126,7 @@ static void bta_ag_sco_conn_cback(uint16_t sco_idx) {
 static void bta_ag_sco_disc_cback(uint16_t sco_idx) {
   uint16_t handle = 0;
 
-  APPL_TRACE_DEBUG(
+  APPL_TRACE_IMP(
       "bta_ag_sco_disc_cback(): sco_idx: 0x%x  p_cur_scb: 0x%08x  sco.state: "
       "%d",
       sco_idx, bta_ag_cb.sco.p_curr_scb, bta_ag_cb.sco.state);
@@ -251,7 +251,7 @@ static bool bta_ag_remove_sco(tBTA_AG_SCB* p_scb, bool only_active) {
   if (p_scb->sco_idx != BTM_INVALID_SCO_INDEX) {
     if (!only_active || p_scb->sco_idx == bta_ag_cb.sco.cur_idx) {
       tBTM_STATUS status = BTM_RemoveSco(p_scb->sco_idx);
-      APPL_TRACE_DEBUG("%s: SCO index 0x%04x, status %d", __func__,
+      APPL_TRACE_IMP("%s: SCO index 0x%04x, status %d", __func__,
                        p_scb->sco_idx, status);
       if (status == BTM_CMD_STARTED) {
         /* SCO is connected; set current control block */
@@ -290,7 +290,7 @@ static void bta_ag_esco_connreq_cback(tBTM_ESCO_EVT event,
 
       /* If no other SCO active, allow this one */
       if (!bta_ag_cb.sco.p_curr_scb) {
-        APPL_TRACE_EVENT("%s: Accept Conn Request (sco_inx 0x%04x)", __func__,
+        APPL_TRACE_IMP("%s: Accept Conn Request (sco_inx 0x%04x)", __func__,
                          sco_inx);
         bta_ag_sco_conn_rsp(p_scb, &p_data->conn_evt);
 
@@ -299,7 +299,7 @@ static void bta_ag_esco_connreq_cback(tBTM_ESCO_EVT event,
         bta_ag_cb.sco.cur_idx = p_scb->sco_idx;
       } else {
         /* Begin a transfer: Close current SCO before responding */
-        APPL_TRACE_DEBUG("bta_ag_esco_connreq_cback: Begin XFER");
+        APPL_TRACE_IMP("bta_ag_esco_connreq_cback: Begin XFER");
         bta_ag_cb.sco.p_xfer_scb = p_scb;
         bta_ag_cb.sco.conn_data = p_data->conn_evt;
         bta_ag_cb.sco.state = BTA_AG_SCO_OPEN_XFER_ST;
@@ -599,14 +599,14 @@ static void bta_ag_sco_event(tBTA_AG_SCB* p_scb, uint8_t event) {
   uint8_t in_state = p_sco->state;
 
   if (event != BTA_AG_SCO_CI_DATA_E) {
-    APPL_TRACE_EVENT("%s: SCO Index 0x%04x, State %d (%s), Event %d (%s)",
+    APPL_TRACE_IMP("%s: SCO Index 0x%04x, State %d (%s), Event %d (%s)",
                      __func__, p_scb->sco_idx, p_sco->state,
                      bta_ag_sco_state_str(p_sco->state), event,
                      bta_ag_sco_evt_str(event));
   }
 #else
   if (event != BTA_AG_SCO_CI_DATA_E) {
-    APPL_TRACE_EVENT("%s: SCO Index 0x%04x, State %d, Event %d", __func__,
+    APPL_TRACE_IMP("%s: SCO Index 0x%04x, State %d, Event %d", __func__,
                      p_scb->sco_idx, p_sco->state, event);
   }
 #endif
@@ -1137,10 +1137,10 @@ static void bta_ag_sco_event(tBTA_AG_SCB* p_scb, uint8_t event) {
   }
 #if (BTA_AG_SCO_DEBUG == TRUE)
   if (p_sco->state != in_state) {
-    APPL_TRACE_EVENT("BTA AG SCO State Change: [%s] -> [%s] after Event [%s]",
-                     bta_ag_sco_state_str(in_state),
-                     bta_ag_sco_state_str(p_sco->state),
-                     bta_ag_sco_evt_str(event));
+         APPL_TRACE_IMP("BTA AG SCO State Change: [%s] -> [%s] after Event [%s]",
+                           bta_ag_sco_state_str(in_state),
+                           bta_ag_sco_state_str(p_sco->state),
+                           bta_ag_sco_evt_str(event));
   }
 #endif
 }
@@ -1232,7 +1232,7 @@ void bta_ag_sco_close(tBTA_AG_SCB* p_scb, UNUSED_ATTR tBTA_AG_DATA* p_data) {
   if ((p_scb->sco_idx != BTM_INVALID_SCO_INDEX) ||
       (bta_ag_cb.sco.state == BTA_AG_SCO_CODEC_ST))
   {
-    APPL_TRACE_DEBUG("bta_ag_sco_close: sco_inx = %d", p_scb->sco_idx);
+    APPL_TRACE_IMP("bta_ag_sco_close: sco_inx = %d", p_scb->sco_idx);
     bta_ag_sco_event(p_scb, BTA_AG_SCO_CLOSE_E);
   }
 }

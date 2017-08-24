@@ -52,7 +52,7 @@ bool btif_a2dp_source_is_streaming(void);
 // Return true if the A2DP remote is trying to start the session
 bool btif_a2dp_source_is_remote_start(void);
 
-// Return true if the A2DP remote is trying to start the session
+// Cancel remote start alarm
 void btif_a2dp_source_cancel_remote_start(void);
 
 // Setup the A2DP Source codec, and prepare the encoder.
@@ -109,4 +109,9 @@ void btif_a2dp_source_debug_dump(int fd);
 // This function should be called before collecting the metrics.
 void btif_a2dp_source_update_metrics(void);
 
+// Honor remote avdtp start
+// This function will start a 3 second timer. If the a2dp streaming is
+// started within this time, then the timer will be cancelled. Else-If
+// timer expires, avdpt suspend will be issued to the remote
+void btif_a2dp_source_on_remote_start(void);
 #endif /* BTIF_A2DP_SOURCE_H */

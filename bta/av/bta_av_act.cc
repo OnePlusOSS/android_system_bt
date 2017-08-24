@@ -236,7 +236,7 @@ static void bta_av_rc_ctrl_cback(uint8_t handle, uint8_t event,
                                  BD_ADDR peer_addr) {
   uint16_t msg_event = 0;
 
-  APPL_TRACE_EVENT("%s handle: %d event=0x%x", __func__, handle, event);
+  APPL_TRACE_IMP("%s handle: %d event=0x%x", __func__, handle, event);
   if (event == AVRC_OPEN_IND_EVT) {
     /* save handle of opened connection
     bta_av_cb.rc_handle = handle;*/
@@ -274,7 +274,7 @@ static void bta_av_rc_msg_cback(uint8_t handle, uint8_t label, uint8_t opcode,
   uint8_t* p_data_src = NULL;
   uint16_t data_len = 0;
 
-  APPL_TRACE_DEBUG("%s handle: %u opcode=0x%x", __func__, handle, opcode);
+  APPL_TRACE_IMP("%s handle: %u opcode=0x%x", __func__, handle, opcode);
 
   /* Copy avrc packet into BTA message buffer (for sending to BTA state machine)
    */
@@ -867,7 +867,7 @@ tBTA_AV_EVT bta_av_proc_meta_cmd(tAVRC_RESPONSE* p_rc_rsp,
     }
   }
 #else
-  APPL_TRACE_DEBUG("AVRCP 1.3 Metadata not supporteed. Reject command.");
+  APPL_TRACE_IMP("AVRCP 1.3 Metadata not supporteed. Reject command.");
   /* reject invalid message without reporting to app */
   evt = 0;
   p_rc_rsp->rsp.status = AVRC_STS_BAD_CMD;
@@ -1451,7 +1451,7 @@ void bta_av_sig_chg(tBTA_AV_DATA* p_data) {
   uint8_t mask;
   tBTA_AV_LCB* p_lcb = NULL;
 
-  APPL_TRACE_DEBUG("bta_av_sig_chg event: %d", event);
+  APPL_TRACE_IMP("%s:bta_av_sig_chg event: %d", __func__, event);
   if (event == AVDT_CONNECT_IND_EVT) {
     p_lcb = bta_av_find_lcb(p_data->str_msg.bd_addr, BTA_AV_LCB_FIND);
     if (!p_lcb) {

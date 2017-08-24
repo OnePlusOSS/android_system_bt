@@ -94,17 +94,17 @@ bool l2c_link_hci_conn_req(BD_ADDR bd_addr) {
       }
     }
 
-    if (no_links) {
-      if (!btm_dev_support_switch(bd_addr))
-        p_lcb->link_role = HCI_ROLE_SLAVE;
-      else
-        p_lcb->link_role = l2cu_get_conn_role(p_lcb);
-    }
+    if (no_links)
+      p_lcb->link_role = L2CAP_DESIRED_LINK_ROLE;
+
     bdcpy(remote_bdaddr.address, bd_addr);
-    if ((p_lcb->link_role == BTM_ROLE_MASTER)&&(interop_database_match_addr(INTEROP_DISABLE_ROLE_SWITCH, (bt_bdaddr_t *)&remote_bdaddr))) {
+    if ((p_lcb->link_role == BTM_ROLE_MASTER) &&
+        (interop_database_match_addr(INTEROP_DISABLE_ROLE_SWITCH, (bt_bdaddr_t *)&remote_bdaddr))) {
       p_lcb->link_role = BTM_ROLE_SLAVE;
-      L2CAP_TRACE_WARNING ("l2c_link_hci_conn_req:set link_role= %d",p_lcb->link_role);
     }
+
+    L2CAP_TRACE_WARNING ("l2c_link_hci_conn_req:set link_role= %d",p_lcb->link_role);
+
     /* Tell the other side we accept the connection */
     btsnd_hcic_accept_conn(bd_addr, p_lcb->link_role);
 

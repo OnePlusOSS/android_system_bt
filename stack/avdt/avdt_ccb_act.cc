@@ -38,7 +38,8 @@
 #include "btm_api.h"
 #include "btu.h"
 #include "osi/include/osi.h"
-
+#include "a2dp_constants.h"
+#include "device/include/interop.h"
 extern fixed_queue_t* btu_general_alarm_queue;
 
 /*******************************************************************************
@@ -152,7 +153,8 @@ void avdt_ccb_hdl_discover_cmd(tAVDT_CCB* p_ccb, tAVDT_CCB_EVT* p_data) {
   tAVDT_SEP_INFO sep_info[AVDT_NUM_SEPS];
   tAVDT_SCB* p_scb = &avdt_cb.scb[0];
   int i;
-
+  bt_bdaddr_t remote_bdaddr;
+  bdcpy(remote_bdaddr.address, p_ccb->peer_addr);
   p_data->msg.discover_rsp.p_sep_info = sep_info;
   p_data->msg.discover_rsp.num_seps = 0;
 
@@ -177,6 +179,11 @@ void avdt_ccb_hdl_discover_cmd(tAVDT_CCB* p_ccb, tAVDT_CCB_EVT* p_data) {
   /* for all allocated scbs */
   for (i = 0; i < AVDT_NUM_SEPS; i++, p_scb++) {
     if ((p_scb->allocated) && (!p_scb->in_use)) {
+       if (p_scb->cs.cfg.codec_info[AVDT_CODEC_TYPE_INDEX] == A2DP_MEDIA_CT_AAC &&
+           interop_match_addr(INTEROP_DISABLE_AAC_CODEC, &remote_bdaddr)) {
+          AVDT_TRACE_EVENT("%s: skipping AAC advertise\n", __func__);
+          continue;
+      }
       /* copy sep info */
       sep_info[p_data->msg.discover_rsp.num_seps].in_use = p_scb->in_use;
       sep_info[p_data->msg.discover_rsp.num_seps].seid = i + 1;

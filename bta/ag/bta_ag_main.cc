@@ -688,7 +688,7 @@ static void bta_ag_api_result(tBTA_AG_DATA* p_data) {
   if (p_data->hdr.layer_specific != BTA_AG_HANDLE_ALL) {
     p_scb = bta_ag_scb_by_idx(p_data->hdr.layer_specific);
     if (p_scb != NULL) {
-      APPL_TRACE_DEBUG("bta_ag_api_result: p_scb 0x%08x ", p_scb);
+      APPL_TRACE_IMP("bta_ag_api_result: p_scb 0x%08x ", p_scb);
       bta_ag_sm_execute(p_scb, BTA_AG_API_RESULT_EVT, p_data);
     }
   } else {
@@ -725,7 +725,7 @@ void bta_ag_sm_execute(tBTA_AG_SCB* p_scb, uint16_t event,
   if ((previous_event != BTA_AG_API_RESULT_EVT ||
        p_scb->state == BTA_AG_OPEN_ST) &&
       event != BTA_AG_CI_SCO_DATA_EVT) {
-    APPL_TRACE_EVENT("%s: Handle 0x%04x, State %d (%s), Event 0x%04x (%s)",
+    APPL_TRACE_IMP("%s: Handle 0x%04x, State %d (%s), Event 0x%04x (%s)",
                      __func__, bta_ag_scb_to_idx(p_scb), p_scb->state,
                      bta_ag_state_str(p_scb->state), event,
                      bta_ag_evt_str(event, p_data->api_result.result));
@@ -803,7 +803,7 @@ bool bta_ag_hdl_event(BT_HDR* p_msg) {
     default:
       p_scb = bta_ag_scb_by_idx(p_msg->layer_specific);
       if (p_scb != NULL) {
-        APPL_TRACE_DEBUG("bta_ag_hdl_event: p_scb 0x%08x ", p_scb);
+        APPL_TRACE_IMP("bta_ag_hdl_event: p_scb 0x%08x ", p_scb);
         bta_ag_sm_execute(p_scb, p_msg->event, (tBTA_AG_DATA*)p_msg);
       }
       break;

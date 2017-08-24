@@ -859,9 +859,10 @@ typedef struct {
 
   uint8_t acl_disc_reason;
   uint8_t trace_level;
-  uint8_t busy_level; /* the current busy level */
-  bool is_paging;     /* true, if paging is in progess */
-  bool is_inquiry;    /* true, if inquiry is in progess */
+  uint8_t busy_level;     /* the current busy level */
+  bool is_paging;         /* true, if paging is in progess */
+  bool is_inquiry;        /* true, if inquiry is in progess */
+  bool is_wifi_connected; /* true, if wifi connected */
   fixed_queue_t* page_queue;
   bool paging;
   bool discing;

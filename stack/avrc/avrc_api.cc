@@ -764,7 +764,7 @@ static void avrc_msg_cback(uint8_t handle, uint8_t label, uint8_t cr,
       case AVRC_OP_VENDOR: {
         p_data = (uint8_t*)(p_pkt + 1) + p_pkt->offset;
         p_begin = p_data;
-        if (p_pkt->len <
+        if (p_pkt->len <=
             AVRC_VENDOR_HDR_SIZE) /* 6 = ctype, subunit*, opcode & CO_ID */
         {
           if (cr == AVCT_CMD)
@@ -778,6 +778,7 @@ static void avrc_msg_cback(uint8_t handle, uint8_t label, uint8_t cr,
         AVRC_BE_STREAM_TO_CO_ID(p_msg->company_id, p_data);
         p_msg->p_vendor_data = p_data;
         p_msg->vendor_len = p_pkt->len - (p_data - p_begin);
+        AVRC_TRACE_DEBUG(" vendor_len %d", p_msg->vendor_len);
 
 #if (AVRC_METADATA_INCLUDED == TRUE)
         uint8_t drop_code = 0;
@@ -1085,7 +1086,7 @@ uint16_t AVRC_Open(uint8_t* p_handle, tAVRC_CONN_CB* p_ccb,
     avrc_cb.ccb_int[*p_handle].tle = alarm_new("avrcp.commandTimer");
     avrc_cb.ccb_int[*p_handle].cmd_q = fixed_queue_new(SIZE_MAX);
   }
-  AVRC_TRACE_DEBUG("%s role: %d, control:%d status:%d, handle:%d", __func__,
+  BTIF_TRACE_IMP("%s role: %d, control:%d status:%d, handle:%d", __func__,
                    cc.role, cc.control, status, *p_handle);
 
   return status;

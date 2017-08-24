@@ -154,6 +154,10 @@ tBTM_STATUS BTM_SetDiscoverability(uint16_t inq_mode, uint16_t window,
   bool cod_limited;
 
   BTM_TRACE_API("BTM_SetDiscoverability");
+
+  /* Make sure the controller is active */
+    if (!controller_get_interface()->get_is_ready()) return (BTM_DEV_RESET);
+
   if (controller_get_interface()->supports_ble()) {
     if (btm_ble_set_discoverability((uint16_t)(inq_mode)) == BTM_SUCCESS) {
       btm_cb.btm_inq_vars.discoverable_mode &= (~BTM_BLE_DISCOVERABLE_MASK);
@@ -165,9 +169,6 @@ tBTM_STATUS BTM_SetDiscoverability(uint16_t inq_mode, uint16_t window,
 
   /*** Check mode parameter ***/
   if (inq_mode > BTM_MAX_DISCOVERABLE) return (BTM_ILLEGAL_VALUE);
-
-  /* Make sure the controller is active */
-  if (!controller_get_interface()->get_is_ready()) return (BTM_DEV_RESET);
 
   /* If the window and/or interval is '0', set to default values */
   if (!window) window = BTM_DEFAULT_DISC_WINDOW;

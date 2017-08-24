@@ -40,6 +40,9 @@
 
 static bool is_wipower_adv = false;
 uint8_t wipower_inst_id  = BTM_BLE_MULTI_ADV_DEFAULT_STD;
+
+extern int enable_power_apply(bool enable, bool on, bool time_flag);
+
 #endif
 
 using base::Bind;
@@ -263,6 +266,11 @@ class BleAdvertisingManagerImpl
             p_inst->enable_status = true;
             hci_interface->Enable(true, p_inst->inst_id, 0x00, 0x00,
                                   Bind(DoNothing));
+#ifdef WIPOWER_SUPPORTED
+            if ((is_wipower_adv && (p_inst->inst_id == wipower_inst_id))) {
+              enable_power_apply(false, false, false);
+            }
+#endif
           }
         },
         p_inst, std::move(configuredCb)));

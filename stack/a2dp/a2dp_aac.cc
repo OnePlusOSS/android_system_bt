@@ -675,6 +675,12 @@ btav_a2dp_codec_index_t A2DP_SourceCodecIndexAac(
 const char* A2DP_CodecIndexStrAac(void) { return "AAC"; }
 
 bool A2DP_InitCodecConfigAac(tAVDT_CFG* p_cfg) {
+  if (A2DP_GetOffloadStatus()) {
+    if (!A2DP_IsCodecEnabledInOffload(BTAV_A2DP_CODEC_INDEX_SOURCE_AAC)){
+      LOG_ERROR(LOG_TAG, "%s: AAC disabled in offload mode", __func__);
+      return false;
+    }
+  }
   if (A2DP_BuildInfoAac(AVDT_MEDIA_TYPE_AUDIO, &a2dp_aac_caps,
                         p_cfg->codec_info) != A2DP_SUCCESS) {
     return false;

@@ -117,7 +117,9 @@ void hci_initialize() {
 
 void hci_close() {
   std::lock_guard<std::mutex> lock(bthci_mutex);
-  btHci->close();
+  auto hidl_daemon_status = btHci->close();
+  if(!hidl_daemon_status.isOk())
+    LOG_ERROR(LOG_TAG, "%s: HIDL daemon is dead", __func__);
   btHci = nullptr;
 }
 
@@ -135,14 +137,26 @@ void hci_transmit(BT_HDR* packet) {
   uint16_t event = packet->event & MSG_EVT_MASK;
   switch (event & MSG_EVT_MASK) {
     case MSG_STACK_TO_HC_HCI_CMD:
-      btHci->sendHciCommand(data);
+    {
+      auto hidl_daemon_status = btHci->sendHciCommand(data);
+      if(!hidl_daemon_status.isOk())
+        LOG_ERROR(LOG_TAG, "%s: send Command failed, HIDL daemon is dead", __func__);
       break;
+    }
     case MSG_STACK_TO_HC_HCI_ACL:
-      btHci->sendAclData(data);
+    {
+      auto hidl_daemon_status = btHci->sendAclData(data);
+      if(!hidl_daemon_status.isOk())
+        LOG_ERROR(LOG_TAG, "%s: send acl packet failed, HIDL daemon is dead", __func__);
       break;
+    }
     case MSG_STACK_TO_HC_HCI_SCO:
-      btHci->sendScoData(data);
+    {
+      auto hidl_daemon_status = btHci->sendScoData(data);
+      if(!hidl_daemon_status.isOk())
+        LOG_ERROR(LOG_TAG, "%s: send sco data failed, HIDL daemon is dead", __func__);
       break;
+    }
     default:
       LOG_ERROR(LOG_TAG, "Unknown packet type (%d)", event);
       break;
