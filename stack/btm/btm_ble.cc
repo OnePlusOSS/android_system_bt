@@ -621,7 +621,8 @@ void BTM_ReadDevInfo(const BD_ADDR remote_bda, tBT_DEVICE_TYPE* p_dev_type,
   {
     /* new inquiry result, overwrite device type in security device record */
     if (p_inq_info) {
-      p_dev_rec->device_type = p_inq_info->results.device_type;
+      BTM_TRACE_DEBUG("p_dev_rec->device_type -%d",p_dev_rec->device_type);
+      p_dev_rec->device_type |= p_inq_info->results.device_type;
       p_dev_rec->ble.ble_addr_type = p_inq_info->results.ble_addr_type;
     }
     if (memcmp(p_dev_rec->bd_addr, remote_bda, BD_ADDR_LEN) == 0 &&

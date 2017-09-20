@@ -237,6 +237,7 @@ void btif_av_reset_reconfig_flag();
 bool btif_av_is_device_disconnecting();
 tBTA_AV_HNDL btif_av_get_reconfig_dev_hndl();
 void btif_av_reset_codec_reconfig_flag();
+void btif_av_reinit_audio_interface();
 
 const char* dump_av_sm_state_name(btif_av_state_t state) {
   switch (state) {
@@ -310,6 +311,7 @@ static void btif_initiate_av_open_timer_timeout(UNUSED_ATTR void* data) {
   BD_ADDR peer_addr;
   btif_av_connect_req_t connect_req;
 
+  memset(&connect_req, 0, sizeof(btif_av_connect_req_t));
   /* is there at least one RC connection - There should be */
   if (btif_rc_get_connected_peer(peer_addr)) {
     /* Check if this peer_addr is same as currently connected AV*/
@@ -393,9 +395,11 @@ void btif_av_peer_config_dump()
    int index = 0;
    BD_ADDR bd_addr;
    btif_sm_state_t av_state;
+   index = btif_av_get_latest_playing_device_idx();
+   BTIF_TRACE_DEBUG("Latest playing device index: %d", index);
+   btif_get_latest_playing_device(bd_addr);
    BTIF_TRACE_DEBUG("TARGET BD ADDRESS %x:%x:%x:%x:%x:%x", bd_addr[0],
            bd_addr[1], bd_addr[2], bd_addr[3], bd_addr[4], bd_addr[5]);
-   index = btif_av_idx_by_bdaddr(bd_addr);
    if (index == btif_max_av_clients)
    {
        BTIF_TRACE_DEBUG("%s: AV Index invalid", __FUNCTION__);
@@ -1286,6 +1290,14 @@ static bool btif_av_state_opened_handler(btif_sm_event_t event, void* p_data,
                 btif_av_cb[index].flags &= ~BTIF_AV_FLAG_REMOTE_SUSPEND;
             } else {
               BTIF_TRACE_DEBUG("%s: honor remote start",__func__);
+              /* If HS2 is started while HS1 is playing, trigger Dual A2dp
+                 Handoff here.
+               */
+              if (btif_av_is_playing() && !btif_av_is_under_handoff()) {
+                BTIF_TRACE_DEBUG("Trigger Dual A2dp Handoff due to remote start on %d", index);
+                btif_av_trigger_dual_handoff(true, btif_av_cb[index].peer_bda.address);
+             }
+
               btif_av_cb[index].remote_started = true;
               btif_a2dp_honor_remote_start();
             }
@@ -1351,9 +1363,11 @@ static bool btif_av_state_opened_handler(btif_sm_event_t event, void* p_data,
       }
 
 /* SPLITA2DP */
-      if (btif_av_is_split_a2dp_enabled()) {
-        btif_a2dp_audio_if_init = false;
-        btif_a2dp_audio_interface_deinit();
+      if (!btif_av_is_connected_on_other_idx(index)) {
+        if (btif_av_is_split_a2dp_enabled()) {
+          btif_a2dp_audio_if_init = false;
+          btif_a2dp_audio_interface_deinit();
+        }
       }
 /* SPLITA2DP */
       /* inform the application that we are disconnecting */
@@ -1652,9 +1666,9 @@ static bool btif_av_state_started_handler(btif_sm_event_t event, void* p_data,
       if (btif_av_cb[index].remote_started) {
         if (btif_a2dp_source_is_remote_start()) {
           BTIF_TRACE_DEBUG("%s:cancel remote start timer",__func__);
-          btif_av_cb[index].remote_started = false;
           btif_a2dp_source_cancel_remote_start();
         }
+        btif_av_cb[index].remote_started = false;
       }
       if (p_av->suspend.initiator != true) {
         /* remote suspend, notify HAL and await audioflinger to
@@ -1887,6 +1901,7 @@ static void btif_av_handle_event(uint16_t event, char* p_param) {
        * In A2dp Multicast, the index selected can be any of the
        * connected device. Stack will ensure to START the steaming
        * on both the devices. */
+      index = btif_av_get_latest_device_idx_to_start();
       for (int i = 0; i < btif_max_av_clients; i++) {
         if (btif_av_cb[i].remote_started == true) {
           BTIF_TRACE_DEBUG("BTIF_AV_START_STREAM_REQ_EVT:remote started,send start on started index");
@@ -1894,7 +1909,6 @@ static void btif_av_handle_event(uint16_t event, char* p_param) {
           break;
         }
       }
-      index = btif_av_get_latest_device_idx_to_start();
       break;
 
     case BTIF_AV_STOP_STREAM_REQ_EVT:
@@ -1909,6 +1923,9 @@ static void btif_av_handle_event(uint16_t event, char* p_param) {
         index = HANDLE_TO_INDEX(hdl);
       }
       break;
+    case BTIF_AV_REINIT_AUDIO_IF:
+      btif_av_reinit_audio_interface();
+      return;
       // Events from the stack, BTA
     case BTA_AV_ENABLE_EVT:
       index = 0;
@@ -2112,6 +2129,7 @@ int btif_av_get_latest_device_idx_to_start() {
     if (i == btif_max_av_clients)
       return btif_max_av_clients;
     BTIF_TRACE_EVENT("Got some valid Playing device; %d", i);
+    btif_av_cb[i].current_playing = true;
     // Clear the Current playing device
     for (j = 0; j < btif_max_av_clients; j++) {
       if (j != i)
@@ -2327,7 +2345,9 @@ static void btif_av_event_free_data(btif_sm_event_t event, void* p_data) {
   switch (event) {
     case BTA_AV_META_MSG_EVT: {
       tBTA_AV* av = (tBTA_AV*)p_data;
-      osi_free_and_reset((void**)&av->meta_msg.p_data);
+      if (av->meta_msg.p_data && av->meta_msg.len) {
+        osi_free_and_reset((void**)&av->meta_msg.p_data);
+      }
 
       if (av->meta_msg.p_msg) {
         if (av->meta_msg.p_msg->hdr.opcode == AVRC_OP_VENDOR) {
@@ -3755,5 +3775,19 @@ void btif_av_reset_codec_reconfig_flag() {
     if (btif_av_cb[i].reconfig_pending)
      btif_av_cb[i].reconfig_pending = false;
   }
+}
+
+/******************************************************************************
+**
+** Function        btif_av_reinit_audio_interface
+**
+** Description     Reinit audio interface,this function is called when BT
+**                 audio hal server is died
+**
+** Returns         void
+********************************************************************************/
+void btif_av_reinit_audio_interface() {
+  BTIF_TRACE_DEBUG(LOG_TAG,"btif_av_reint_audio_interface");
+  btif_a2dp_audio_interface_init();
 }
 /*SPLITA2DP*/

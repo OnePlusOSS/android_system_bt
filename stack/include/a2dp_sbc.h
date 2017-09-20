@@ -263,4 +263,9 @@ bool A2DP_InitCodecConfigSbc(tAVDT_CFG* p_cfg);
 // entry pointed by |p_cfg|.
 bool A2DP_InitCodecConfigSbcSink(tAVDT_CFG* p_cfg);
 
+// Get SBC bitrate for offload mode
+// |config| contains codec info
+// |is_peer_edr| flag is true if peer is edr else false
+// Returns |uint16_t| bitrate value
+uint16_t A2DP_GetOffloadBitrateSbc(A2dpCodecConfig* config, bool is_peer_edr);
 #endif  // A2DP_SBC_H

@@ -273,6 +273,9 @@ cc_test {
         "liblog",
         "libgmock",
     ],
+    cflags: [
+        "-UWIPOWER_SUPPORTED",
+    ]
 }
 
 // Bluetooth stack advertise data parsing unit tests for target

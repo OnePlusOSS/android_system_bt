@@ -53,6 +53,7 @@ typedef enum {
   BTIF_AV_OFFLOAD_START_REQ_EVT,
   BTIF_AV_CLEANUP_REQ_EVT,
   BTIF_AV_INIT_REQ_EVT,
+  BTIF_AV_REINIT_AUDIO_IF,
 } btif_av_sm_event_t;
 
 /*******************************************************************************

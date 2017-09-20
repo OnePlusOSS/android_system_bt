@@ -33,6 +33,8 @@
 #include "btif_av.h"
 #include "btif_av_co.h"
 #include "btif_hf.h"
+#include "a2dp_sbc.h"
+#include <pthread.h>
 #include "osi/include/osi.h"
 #include <base/logging.h>
 #include <utils/RefBase.h>
@@ -50,6 +52,8 @@ using ::android::hardware::Return;
 using ::android::hardware::Void;
 using ::android::hardware::hidl_vec;
 using ::android::sp;
+using ::android::hardware::hidl_death_recipient;
+using ::android::wp;
 android::sp<IBluetoothAudio> btAudio;
 
 #define CASE_RETURN_STR(const) \
@@ -60,10 +64,21 @@ uint8_t codec_info[30];
 uint8_t len,a2dp_cmd_pending = A2DP_CTRL_CMD_NONE;
 Status mapToStatus(uint8_t resp);
 uint8_t btif_a2dp_audio_process_request(uint8_t cmd);
-
+volatile bool server_died = false;
+static pthread_t audio_hal_monitor;
 /*BTIF AV helper */
 extern bool btif_av_is_device_disconnecting();
 extern bool reconfig_a2dp;
+bool deinit_pending = false;
+static void btif_a2dp_audio_send_start_req();
+static void btif_a2dp_audio_send_suspend_req();
+static void btif_a2dp_audio_send_stop_req();
+static void btif_a2dp_audio_send_a2dp_ready_status();
+static void btif_a2dp_audio_send_codec_config();
+static void btif_a2dp_audio_send_mcast_status();
+static void btif_a2dp_audio_send_num_connected_devices();
+static void btif_a2dp_audio_send_connection_status();
+static void btif_a2dp_audio_send_sink_latency();
 #if 0
 typedef enum {
   A2DP_CTRL_GET_CODEC_CONFIG = 15,
@@ -89,77 +104,65 @@ typedef enum {
 #endif
 #endif
 
+void on_hidl_server_died();
+//using OnServerDead = std::function<void(void)>;
+struct HidlDeathRecipient : public hidl_death_recipient {
+  virtual void serviceDied(
+      uint64_t /*cookie*/,
+      const wp<::android::hidl::base::V1_0::IBase>& /*who*/) {
+    LOG_INFO(LOG_TAG,"serviceDied");
+    //on_hidl_server_died();
+    server_died = true;
+  }
+};
+sp<HidlDeathRecipient> BTAudioHidlDeathRecipient = new HidlDeathRecipient();
+
 class BluetoothAudioCallbacks : public IBluetoothAudioCallbacks {
  public:
-    Return<Status> a2dp_start_stream_req() {
-        uint8_t resp;
+    Return<void> a2dp_start_stream_req() {
         LOG_INFO(LOG_TAG,"a2dp_start_stream_req");
-        resp = btif_a2dp_audio_process_request(A2DP_CTRL_CMD_START);
-        LOG_INFO(LOG_TAG,"resp  = %d",resp);
-        return mapToStatus(resp);
-        //return ::android::hardware::bluetooth_audio::V1_0::Status {};
-    }
-    Return<Status> a2dp_suspend_stream_req() {
-        uint8_t resp;
-        LOG_INFO(LOG_TAG,"a2dp_suspend_stream_req");
-        resp = btif_a2dp_audio_process_request(A2DP_CTRL_CMD_SUSPEND);
-        LOG_INFO(LOG_TAG,"resp  = %d",resp);
-        return mapToStatus(resp);
-//        return ::android::hardware::bluetooth_audio::V1_0::Status {};
-    }
-    Return<Status> a2dp_stop_stream_req() {
-        uint8_t resp;
-        LOG_INFO(LOG_TAG,"a2dp_stop_stream_req");
-        resp = btif_a2dp_audio_process_request(A2DP_CTRL_CMD_STOP);
-        LOG_INFO(LOG_TAG,"resp  = %d",resp);
-        return mapToStatus(resp);
-//        return ::android::hardware::bluetooth_audio::V1_0::Status {};
-    }
-    Return<Status> a2dp_check_ready() {
-        uint8_t resp;
-        LOG_INFO(LOG_TAG,"a2dp_check_ready");
-        resp = btif_a2dp_audio_process_request(A2DP_CTRL_CMD_CHECK_READY);
-        LOG_INFO(LOG_TAG,"resp  = %d",resp);
-        return mapToStatus(resp);
-//        return ::android::hardware::bluetooth_audio::V1_0::Status {};
-    }
-    using get_codec_config_cb = std::function<void(Status status, const hidl_vec<uint8_t>& cfg)>;
-    Return<void> a2dp_get_codec_config(get_codec_config_cb _hidl_cb) {
-        uint8_t resp;
-        CodecCfg data;
-        LOG_INFO(LOG_TAG,"a2dp_get_codec_config");
-        resp = btif_a2dp_audio_process_request(A2DP_CTRL_GET_CODEC_CONFIG);
-        LOG_INFO(LOG_TAG,"resp  = %d",resp);
-        data.setToExternal(codec_info,len);
-        _hidl_cb(mapToStatus(resp), data);
+        btif_a2dp_audio_send_start_req();
         return Void();
     }
-    Return<uint8_t> a2dp_get_multicast_status() {
-        uint8_t ret = 0;
-        //TODO implement
+    Return<void> a2dp_suspend_stream_req() {
+        LOG_INFO(LOG_TAG,"a2dp_suspend_stream_req");
+        btif_a2dp_audio_send_suspend_req();
+        return Void();
+    }
+    Return<void> a2dp_stop_stream_req() {
+        LOG_INFO(LOG_TAG,"a2dp_stop_stream_req");
+        btif_a2dp_audio_send_stop_req();
+        return Void();
+    }
+    Return<void> a2dp_check_ready() {
+        LOG_INFO(LOG_TAG,"a2dp_check_ready");
+        btif_a2dp_audio_send_a2dp_ready_status();
+        return Void();
+    }
+    Return<void> a2dp_get_codec_config() {
+        LOG_INFO(LOG_TAG,"a2dp_get_codec_config");
+        btif_a2dp_audio_send_codec_config();
+        return Void();
+    }
+    Return<void> a2dp_get_multicast_status() {
         LOG_INFO(LOG_TAG,"a2dp_get_multicast_status");
-        return ret;
+        btif_a2dp_audio_send_mcast_status();
+        return Void();
     }
-    Return<uint8_t> a2dp_get_num_connected_devices() {
-        uint8_t ret = 1;
-        //TODO implement
+    Return<void> a2dp_get_num_connected_devices() {
         LOG_INFO(LOG_TAG,"a2dp_get_num_connected_devices");
-        return ret;
+        btif_a2dp_audio_send_num_connected_devices();
+        return Void();
     }
-    Return<Status> a2dp_get_connection_status() {
-        uint8_t resp;
+    Return<void> a2dp_get_connection_status() {
         LOG_INFO(LOG_TAG,"a2dp_get_connection_status");
-        resp = btif_a2dp_audio_process_request(A2DP_CTRL_GET_CONNECTION_STATUS);
-        LOG_INFO(LOG_TAG,"resp  = %d",resp);
-        return mapToStatus(resp);
-        //return ::android::hardware::bluetooth_audio::V1_0::Status {};
+        btif_a2dp_audio_send_connection_status();
+        return Void();
     }
-    Return<uint16_t> a2dp_get_sink_latency() {
-        uint16_t sink_latency;
+    Return<void> a2dp_get_sink_latency() {
         LOG_INFO(LOG_TAG,"a2dp_get_sink_latency");
-
-        sink_latency = btif_av_get_sink_latency();
-        return sink_latency;
+        btif_a2dp_audio_send_sink_latency(); 
+        return Void();
     }
 };
 
@@ -187,10 +190,25 @@ Status mapToStatus(uint8_t resp)
     }
   return Status::SUCCESS;
 }
+
+/* Thread to handle hal sever death receipt*/
+static void* server_thread(UNUSED_ATTR void* arg) {
+  LOG_INFO(LOG_TAG,"%s",__func__);
+  while (server_died == false);
+  if (btAudio != nullptr) {
+    LOG_INFO(LOG_TAG,"%s:audio hal died",__func__);
+    server_died = false;
+    on_hidl_server_died();
+  }
+  pthread_join(audio_hal_monitor, NULL);
+  LOG_INFO(LOG_TAG,"%s EXIT",__func__);
+  return NULL;
+}
+
 void btif_a2dp_audio_interface_init() {
+  LOG_INFO(LOG_TAG,"btif_a2dp_audio_interface_init");
   btAudio = IBluetoothAudio::getService();
   CHECK(btAudio != nullptr);
-
   LOG_INFO(LOG_TAG, "%s: IBluetoothAudio::getService() returned %p (%s)",
            __func__, btAudio.get(), (btAudio->isRemote() ? "remote" : "local"));
   {
@@ -198,19 +216,31 @@ void btif_a2dp_audio_interface_init() {
     android::sp<IBluetoothAudioCallbacks> callbacks = new BluetoothAudioCallbacks();
     btAudio->initialize_callbacks(callbacks);
   }
+  deinit_pending = false;
+  server_died = false;
+  int ret = pthread_create(&audio_hal_monitor, (const pthread_attr_t*)NULL, server_thread, nullptr);
+  if (ret != 0)
+    LOG_ERROR(LOG_TAG,"pthread create falied");
+  btAudio->linkToDeath(BTAudioHidlDeathRecipient, 0);
   LOG_INFO(LOG_TAG,"%s:Init returned",__func__);
 }
+
 void btif_a2dp_audio_interface_deinit() {
   LOG_INFO(LOG_TAG,"btif_a2dp_audio_interface_deinit");
+  deinit_pending = true;
   if (btAudio != nullptr) {
     auto ret = btAudio->deinitialize_callbacks();
     if (!ret.isOk()) {
       LOG_ERROR(LOG_TAG,"hal server is dead");
     }
   }
+  deinit_pending = false;
+  btAudio->unlinkToDeath(BTAudioHidlDeathRecipient);
   btAudio = nullptr;
+  server_died = true; //Exit thread
   LOG_INFO(LOG_TAG,"btif_a2dp_audio_interface_deinit:Exit");
 }
+
 void btif_a2dp_audio_on_started(tBTA_AV_STATUS status)
 {
   LOG_INFO(LOG_TAG,"btif_a2dp_audio_on_started : status = %d",status);
@@ -246,6 +276,102 @@ void btif_a2dp_audio_on_stopped(tBTA_AV_STATUS status)
     }
   }
 }
+void btif_a2dp_audio_send_start_req()
+{
+  uint8_t resp;
+  resp = btif_a2dp_audio_process_request(A2DP_CTRL_CMD_START);
+  if (btAudio != nullptr) {
+    auto ret =  btAudio->a2dp_on_started(mapToStatus(resp));
+    if (!ret.isOk()) LOG_ERROR(LOG_TAG,"server died");
+  }
+}
+void btif_a2dp_audio_send_suspend_req()
+{
+  uint8_t resp;
+  resp = btif_a2dp_audio_process_request(A2DP_CTRL_CMD_SUSPEND);
+  if (btAudio != nullptr) {
+    auto ret =  btAudio->a2dp_on_suspended(mapToStatus(resp));
+    if (!ret.isOk()) LOG_ERROR(LOG_TAG,"server died");
+  }
+}
+void btif_a2dp_audio_send_stop_req()
+{
+  uint8_t resp;
+  resp = btif_a2dp_audio_process_request(A2DP_CTRL_CMD_STOP);
+  if (btAudio != nullptr) {
+    auto ret =  btAudio->a2dp_on_stopped(mapToStatus(resp));
+    if (!ret.isOk()) LOG_ERROR(LOG_TAG,"server died");
+  }
+}
+void btif_a2dp_audio_send_a2dp_ready_status()
+{
+  uint8_t resp;
+  resp = btif_a2dp_audio_process_request(A2DP_CTRL_CMD_CHECK_READY);
+  if (btAudio != nullptr) {
+    auto ret = btAudio->a2dp_on_check_ready(mapToStatus(resp));
+    if (!ret.isOk()) LOG_ERROR(LOG_TAG,"server died");
+  }
+}
+void btif_a2dp_audio_send_codec_config()
+{
+  uint8_t resp;
+  CodecCfg data;
+  LOG_INFO(LOG_TAG,"a2dp_get_codec_config");
+  resp = btif_a2dp_audio_process_request(A2DP_CTRL_GET_CODEC_CONFIG);
+  LOG_INFO(LOG_TAG,"resp  = %d",resp);
+  data.setToExternal(codec_info,len);
+  if (btAudio != nullptr) {
+    auto ret = btAudio->a2dp_on_get_codec_config(mapToStatus(resp), data);
+    if (!ret.isOk()) LOG_ERROR(LOG_TAG,"server died");
+  }
+}
+void btif_a2dp_audio_send_mcast_status()
+{
+  uint8_t mcast = 0;
+  LOG_INFO(LOG_TAG,"btif_a2dp_audio_send_mcast_status:multicast");
+  //Mulitcast not supported currently
+  if (btAudio != nullptr) {
+    auto ret = btAudio->a2dp_on_get_multicast_status(mcast);
+    if (!ret.isOk()) LOG_ERROR(LOG_TAG,"server died");
+  }
+}
+void btif_a2dp_audio_send_num_connected_devices()
+{
+  uint8_t num_dev = 1;
+  LOG_INFO(LOG_TAG,"send_num_connected_devices");
+  if (btAudio != nullptr) {
+    auto ret = btAudio->a2dp_on_get_num_connected_devices(num_dev);
+    if (!ret.isOk()) LOG_ERROR(LOG_TAG,"server died");
+  }
+}
+void btif_a2dp_audio_send_connection_status()
+{
+  uint8_t resp;
+  LOG_INFO(LOG_TAG,"send_connection_status");
+  resp = btif_a2dp_audio_process_request(A2DP_CTRL_GET_CONNECTION_STATUS);
+  if (btAudio != nullptr) {
+    auto ret = btAudio->a2dp_on_get_connection_status(mapToStatus(resp));
+    if (!ret.isOk()) LOG_ERROR(LOG_TAG,"server died");
+  }
+}
+void btif_a2dp_audio_send_sink_latency()
+{
+  LOG_INFO(LOG_TAG,"send_sink_latency");
+  uint16_t sink_latency = btif_av_get_sink_latency();
+  if (btAudio != nullptr) {
+    auto ret = btAudio->a2dp_on_get_sink_latency(sink_latency);
+    if (!ret.isOk()) LOG_ERROR(LOG_TAG,"server died");
+  }
+}
+void on_hidl_server_died() {
+  LOG_INFO(LOG_TAG,"on_hidl_server_died");
+  if (btAudio != nullptr) {
+    btAudio->unlinkToDeath(BTAudioHidlDeathRecipient);
+    btAudio = nullptr;
+    usleep(2000000); //sleep for 2sec for hal server to restart
+    btif_dispatch_sm_event(BTIF_AV_REINIT_AUDIO_IF,NULL,0);
+  }
+}
 uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
 {
   APPL_TRACE_DEBUG(LOG_TAG,"btif_a2dp_audio_process_request %s", audio_a2dp_hw_dump_ctrl_event((tA2DP_CTRL_CMD)cmd));
@@ -262,6 +388,11 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
       }
       if (!btif_hf_is_call_vr_idle()) {
         status  = A2DP_CTRL_ACK_INCALL_FAILURE;
+        break;
+      }
+      if (deinit_pending) {
+        APPL_TRACE_WARNING("%s:deinit pending return disconnected");
+        status = A2DP_CTRL_ACK_DISCONNECT_IN_PROGRESS;
         break;
       }
       if (btif_av_is_under_handoff() || reconfig_a2dp) {
@@ -288,7 +419,11 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
         status = A2DP_CTRL_ACK_INCALL_FAILURE;
         break;
       }
-
+      if (deinit_pending) {
+        APPL_TRACE_WARNING("%s:deinit pending return disconnected");
+        status = A2DP_CTRL_ACK_DISCONNECT_IN_PROGRESS;
+        break;
+      }
       if (btif_a2dp_source_is_remote_start()) {
         APPL_TRACE_WARNING("%s: remote a2dp started, cancel remote start timer",
                            __func__);
@@ -297,7 +432,6 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
         status = A2DP_CTRL_ACK_PENDING;
         break;
       }
-
       /* In dual a2dp mode check for stream started first*/
       if (btif_av_stream_started_ready()) {
         /*
@@ -332,6 +466,11 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
     case A2DP_CTRL_CMD_STOP:
       {
         int idx = btif_av_get_latest_playing_device_idx();
+        if (deinit_pending) {
+          APPL_TRACE_WARNING("%s:deinit pending return disconnected");
+          status = A2DP_CTRL_ACK_DISCONNECT_IN_PROGRESS;
+          break;
+        }
         if (btif_av_get_peer_sep(idx) == AVDT_TSEP_SNK &&
             !btif_a2dp_source_is_streaming()) {
           /* We are already stopped, just ack back */
@@ -346,9 +485,14 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
       }
     case A2DP_CTRL_CMD_SUSPEND:
       /* Local suspend */
+      if (deinit_pending) {
+        APPL_TRACE_WARNING("%s:deinit pending return disconnected");
+        status = A2DP_CTRL_ACK_DISCONNECT_IN_PROGRESS;
+        break;
+      }
       if (reconfig_a2dp ||
           btif_a2dp_source_is_remote_start()) {
-        LOG_INFO(LOG_TAG,"Suspend called due to reconfig or remote started");
+        LOG_INFO(LOG_TAG,"Suspend called due to reconfig");
         /*if (btif_av_is_under_handoff() && !btif_av_is_device_disconnecting()) {
           LOG_INFO(LOG_TAG,"Under hand off,hopefully stack send success ack");
           status = A2DP_CTRL_ACK_PENDING;
@@ -405,10 +549,9 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
         LOG_INFO(LOG_TAG,"codec_type = %x",codec_type);
         if (A2DP_MEDIA_CT_SBC == codec_type)
         {
-          uint16_t rate = A2DP_SBC_DEFAULT_BITRATE;
-          if (!peer_param.is_peer_edr)
-            rate = A2DP_SBC_NON_EDR_MAX_RATE;
-          bitrate =  rate * 1000;
+          bitrate = A2DP_GetOffloadBitrateSbc(CodecConfig, peer_param.is_peer_edr);
+          LOG_INFO(LOG_TAG,"bitrate = %d", bitrate);
+          bitrate *= 1000;
         }
         else if (A2DP_MEDIA_CT_NON_A2DP == codec_type)
         {

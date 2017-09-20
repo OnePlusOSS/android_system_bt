@@ -380,11 +380,11 @@ uint8_t bta_av_rc_create(tBTA_AV_CB* p_cb, uint8_t role, uint8_t shdl,
     /* this LIDX is reserved for the AVRCP ACP connection */
     p_cb->rc_acp_handle = p_rcb->handle;
     p_cb->rc_acp_idx = (i + 1);
-    APPL_TRACE_DEBUG("rc_acp_handle:%d idx:%d", p_cb->rc_acp_handle,
+    APPL_TRACE_IMP("rc_acp_handle: %d idx: %d", p_cb->rc_acp_handle,
                      p_cb->rc_acp_idx);
   }
-  APPL_TRACE_DEBUG(
-      "create %d, role: %d, shdl:%d, rc_handle:%d, lidx:%d, status:0x%x", i,
+  APPL_TRACE_IMP(
+      "bta_av_rc_create %d, role: %d, shdl:%d, rc_handle:%d, lidx:%d, status:0x%x", i,
       role, shdl, p_rcb->handle, lidx, p_rcb->status);
 
   return rc_handle;
@@ -1810,10 +1810,19 @@ tBTA_AV_FEAT bta_av_check_peer_features(uint16_t service_uuid) {
         p_attr = SDP_FindAttributeInRec(p_rec, ATTR_ID_SUPPORTED_FEATURES);
         if (p_attr != NULL) {
           categories = p_attr->attr_value.v.u16;
+          APPL_TRACE_DEBUG("peer categories: 0x%x", categories);
           if (categories & AVRC_SUPF_CT_CAT2)
             peer_features |= (BTA_AV_FEAT_ADV_CTRL);
           if (categories & AVRC_SUPF_CT_BROWSE)
             peer_features |= (BTA_AV_FEAT_BROWSE);
+          uint16_t dut_avrcp_version = bta_get_dut_avrcp_version();
+          if ((categories & AVRC_SUPF_CT_COVER_ART_GET_IMAGE) &&
+              (categories & AVRC_SUPF_CT_COVER_ART_GET_THUMBNAIL)
+              && (dut_avrcp_version == AVRC_REV_1_6))
+          {
+              peer_features |= (BTA_AV_FEAT_CA);
+              APPL_TRACE_DEBUG("peer supports cover art");
+          }
         }
       }
       if ((peer_rc_version >= AVRC_REV_1_4) &&
@@ -2153,6 +2162,9 @@ void bta_av_rc_closed(tBTA_AV_DATA* p_data) {
     bdcpy(rc_close.peer_addr, p_msg->peer_addr);
   }
   (*p_cb->p_cback)(BTA_AV_RC_CLOSE_EVT, (tBTA_AV*)&rc_close);
+  if (bta_av_cb.rc_acp_handle == BTA_AV_RC_HANDLE_NONE
+                  && bta_av_cb.features & BTA_AV_FEAT_RCTG)
+      bta_av_rc_create(&bta_av_cb, AVCT_ACP, 0, BTA_AV_NUM_LINKS + 1);
 }
 
 /*******************************************************************************

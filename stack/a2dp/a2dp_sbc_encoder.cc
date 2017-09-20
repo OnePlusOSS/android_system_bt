@@ -43,6 +43,9 @@
 
 #define A2DP_SBC_NON_EDR_MAX_RATE 229
 
+//OFFLOAD DEFAULT_BITRATE for 48khz
+#define A2DP_SBC_DEFAULT_OFFLOAD_BITRATE 345
+#define A2DP_SBC_NON_EDR_OFFLOAD_MAX_RATE 237
 /*
  * 2DH5 payload size of:
  * 679 bytes - (4 bytes L2CAP Header + 12 bytes AVDTP Header)
@@ -126,7 +129,7 @@ static void a2dp_sbc_get_num_frame_iteration(uint8_t* num_of_iterations,
 static uint8_t calculate_max_frames_per_packet(void);
 static uint16_t a2dp_sbc_source_rate(void);
 static uint32_t a2dp_sbc_frame_length(void);
-
+static uint16_t a2dp_sbc_offload_source_rate(bool is_peer_edr);
 bool A2DP_LoadEncoderSbc(void) {
   // Nothing to do - the library is statically linked
   return true;
@@ -840,6 +843,19 @@ static uint8_t calculate_max_frames_per_packet(void) {
   return result;
 }
 
+static uint16_t a2dp_sbc_offload_source_rate(bool is_peer_edr) {
+  uint16_t rate = A2DP_SBC_DEFAULT_OFFLOAD_BITRATE;
+  LOG_DEBUG(LOG_TAG,"%s",__func__);
+  /* restrict bitrate if a2dp link is non-edr */
+  if (!is_peer_edr) {
+    rate = A2DP_SBC_NON_EDR_OFFLOAD_MAX_RATE;
+    LOG_VERBOSE(LOG_TAG, "%s: non-edr a2dp sink detected, restrict rate to %d",
+                __func__, rate);
+  }
+
+  LOG_DEBUG(LOG_TAG,"%s rate = %d",__func__,rate);
+  return rate;
+}
 static uint16_t a2dp_sbc_source_rate(void) {
   uint16_t rate = A2DP_SBC_DEFAULT_BITRATE;
 
@@ -908,6 +924,160 @@ static uint32_t a2dp_sbc_frame_length(void) {
   }
   LOG_VERBOSE(LOG_TAG, "%s: calculated frame length: %d", __func__, frame_len);
   return frame_len;
+}
+
+uint16_t a2dp_sbc_calulate_offload_bitrate(A2dpCodecConfig* a2dp_codec_config, bool is_peer_edr) {
+  uint8_t codec_info[AVDT_CODEC_SIZE];
+  uint16_t s16SamplingFreq,sample_rate;
+  int16_t s16BitPool = 0;
+  int16_t s16BitRate;
+  int16_t s16FrameLen;
+  uint8_t protect = 0;
+  int min_bitpool;
+  int max_bitpool;
+  uint8_t bits_per_sample,channel_count;
+  uint16_t s16ChannelMode, s16NumOfSubBands, s16NumOfBlocks;
+  uint16_t s16AllocationMethod, s16NumOfChannels;
+  uint16_t offload_bitrate;
+  LOG_ERROR(LOG_TAG,"%s is peer edr = %d",__func__, is_peer_edr);
+  if (!a2dp_codec_config->copyOutOtaCodecConfig(codec_info)) {
+    LOG_ERROR(LOG_TAG,
+              "%s: Cannot update the codec encoder for %s: "
+              "invalid codec config",
+              __func__, a2dp_codec_config->name().c_str());
+    return 0;
+  }
+  const uint8_t* p_codec_info = codec_info;
+  min_bitpool = A2DP_GetMinBitpoolSbc(p_codec_info);
+  max_bitpool = A2DP_GetMaxBitpoolSbc(p_codec_info);
+  // The feeding parameters
+  sample_rate = A2DP_GetTrackSampleRateSbc(p_codec_info);
+  bits_per_sample =
+     A2DP_GetTrackBitsPerSampleSbc(p_codec_info);
+  channel_count = A2DP_GetTrackChannelCountSbc(p_codec_info);
+  LOG_DEBUG(LOG_TAG, "%s: sample_rate=%u bits_per_sample=%u channel_count=%u min_bitpool=%x max_bitpool=%x",
+           __func__, sample_rate, bits_per_sample, channel_count, min_bitpool, max_bitpool);
+
+ // The codec parameters
+  s16ChannelMode = A2DP_GetChannelModeCodeSbc(p_codec_info);
+  s16NumOfSubBands =
+       A2DP_GetNumberOfSubbandsSbc(p_codec_info);
+  s16NumOfBlocks = A2DP_GetNumberOfBlocksSbc(p_codec_info);
+  s16AllocationMethod =
+       A2DP_GetAllocationMethodCodeSbc(p_codec_info);
+  s16SamplingFreq =
+       A2DP_GetSamplingFrequencyCodeSbc(p_codec_info);
+  s16NumOfChannels =
+       A2DP_GetTrackChannelCountSbc(p_codec_info);
+
+ // Reset invalid parameters
+  if (!s16NumOfSubBands) {
+    LOG_WARN(LOG_TAG, "%s: SubBands are set to 0, resetting to max (%d)",
+             __func__, SBC_MAX_NUM_OF_SUBBANDS);
+    s16NumOfSubBands = SBC_MAX_NUM_OF_SUBBANDS;
+  }
+  if (!s16NumOfBlocks) {
+    LOG_WARN(LOG_TAG, "%s: Blocks are set to 0, resetting to max (%d)",
+             __func__, SBC_MAX_NUM_OF_BLOCKS);
+    s16NumOfBlocks = SBC_MAX_NUM_OF_BLOCKS;
+  }
+  if (!s16NumOfChannels) {
+    LOG_WARN(LOG_TAG, "%s: Channels are set to 0, resetting to max (%d)",
+             __func__, SBC_MAX_NUM_OF_CHANNELS);
+    s16NumOfChannels = SBC_MAX_NUM_OF_CHANNELS;
+  }
+
+  if (s16SamplingFreq == SBC_sf16000)
+    s16SamplingFreq = 16000;
+  else if (s16SamplingFreq == SBC_sf32000)
+    s16SamplingFreq = 32000;
+  else if (s16SamplingFreq == SBC_sf44100)
+    s16SamplingFreq = 44100;
+  else
+    s16SamplingFreq = 48000;
+
+  offload_bitrate = a2dp_sbc_offload_source_rate(is_peer_edr);
+  LOG_WARN(LOG_TAG,"initial bitrate = %d", offload_bitrate);
+  do {
+    if ((s16ChannelMode == SBC_JOINT_STEREO) ||
+        (s16ChannelMode == SBC_STEREO)) {
+      s16BitPool = (int16_t)((offload_bitrate *
+                              s16NumOfSubBands * 1000 /
+                              s16SamplingFreq) -
+                             ((32 + (4 * s16NumOfSubBands *
+                                     s16NumOfChannels) +
+                               (s16ChannelMode - 2) *
+                                s16NumOfSubBands)) /
+                              s16NumOfBlocks);
+
+      s16FrameLen = 4 +
+                    (4 * s16NumOfSubBands *
+                     s16NumOfChannels) /
+                        8 +
+                    (((s16ChannelMode - 2) *
+                      s16NumOfSubBands) +
+                     (s16NumOfBlocks * s16BitPool)) /
+                        8;
+
+      s16BitRate = (8 * s16FrameLen * s16SamplingFreq) /
+                   (s16NumOfSubBands *
+                    s16NumOfBlocks * 1000);
+
+      if (s16BitRate > offload_bitrate) s16BitPool--;
+
+      if (s16NumOfSubBands == 8)
+        s16BitPool = (s16BitPool > 255) ? 255 : s16BitPool;
+      else
+        s16BitPool = (s16BitPool > 128) ? 128 : s16BitPool;
+    } else {
+      s16BitPool =
+          (int16_t)(((s16NumOfSubBands *
+                      offload_bitrate * 1000) /
+                     (s16SamplingFreq * s16NumOfChannels)) -
+                    (((32 / s16NumOfChannels) +
+                      (4 * s16NumOfSubBands)) /
+                     s16NumOfBlocks));
+
+     //uint16_t m16BitPool =
+     //    (s16BitPool > (16 * s16NumOfSubBands))
+     //        ? (16 * s16NumOfSubBands)
+     //        : s16BitPool;
+    }
+
+    if (s16BitPool < 0) s16BitPool = 0;
+
+    LOG_DEBUG(LOG_TAG, "%s: bitpool candidate: %d (%d kbps)", __func__,
+              s16BitPool, offload_bitrate);
+
+    if (s16BitPool > max_bitpool) {
+      LOG_DEBUG(LOG_TAG, "%s: computed bitpool too large (%d)", __func__,
+                s16BitPool);
+      /* Decrease bitrate */
+      offload_bitrate -= A2DP_SBC_BITRATE_STEP;
+      /* Record that we have decreased the bitrate */
+      protect |= 1;
+    } else if (s16BitPool < min_bitpool) {
+      LOG_WARN(LOG_TAG, "%s: computed bitpool too small (%d)", __func__,
+               s16BitPool);
+
+      /* Increase bitrate */
+      uint16_t previous_u16BitRate = offload_bitrate;
+      offload_bitrate += A2DP_SBC_BITRATE_STEP;
+      /* Record that we have increased the bitrate */
+      protect |= 2;
+      /* Check over-flow */
+      if (offload_bitrate < previous_u16BitRate) protect |= 3;
+    } else {
+      break;
+    }
+    /* In case we have already increased and decreased the bitrate, just stop */
+    if (protect == 3) {
+      LOG_ERROR(LOG_TAG, "%s: could not find bitpool in range", __func__);
+      break;
+    }
+  } while (true);
+  LOG_ERROR(LOG_TAG,"offload_bitrate for sbc = %d",offload_bitrate);
+  return offload_bitrate;
 }
 
 period_ms_t A2dpCodecConfigSbc::encoderIntervalMs() const {

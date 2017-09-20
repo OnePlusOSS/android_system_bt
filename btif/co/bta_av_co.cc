@@ -640,6 +640,7 @@ void bta_av_co_audio_open(tBTA_AV_HNDL hndl, uint16_t mtu) {
   } else {
     p_peer->opened = true;
     p_peer->mtu = mtu;
+    p_peer->handle = hndl;
   }
 }
 

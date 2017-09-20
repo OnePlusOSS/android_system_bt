@@ -116,11 +116,16 @@ void hci_initialize() {
 }
 
 void hci_close() {
-  std::lock_guard<std::mutex> lock(bthci_mutex);
-  auto hidl_daemon_status = btHci->close();
-  if(!hidl_daemon_status.isOk())
-    LOG_ERROR(LOG_TAG, "%s: HIDL daemon is dead", __func__);
-  btHci = nullptr;
+  LOG_INFO(LOG_TAG, "%s", __func__);
+
+  if (btHci != nullptr) {
+    std::lock_guard<std::mutex> lock(bthci_mutex);
+    auto hidl_daemon_status = btHci->close();
+    if(!hidl_daemon_status.isOk())
+      LOG_ERROR(LOG_TAG, "%s: HIDL daemon is dead", __func__);
+
+    btHci = nullptr;
+  }
 }
 
 void hci_transmit(BT_HDR* packet) {

@@ -53,6 +53,7 @@
 #include "osi/include/list.h"
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
+#include "stack/sdp/sdpint.h"
 #define RC_INVALID_TRACK_ID (0xFFFFFFFFFFFFFFFFULL)
 
 /*****************************************************************************
@@ -1681,6 +1682,15 @@ static void btif_rc_upstreams_evt(uint16_t event, tAVRC_COMMAND* pavrc_cmd,
                              AVRC_STS_BAD_PARAM, pavrc_cmd->cmd.opcode);
         return;
       }
+      int ver = AVRC_REV_INVALID;
+      ver = sdp_get_stored_avrc_tg_version (rc_addr.address);
+      if ((!(p_dev->rc_features & BTA_AV_FEAT_CA)) ||
+              (ver < AVRC_REV_1_6) || (ver == AVRC_REV_INVALID))
+      {
+          BTIF_TRACE_DEBUG("remove cover art element if remote doesn't support avrcp1.6");
+          if (num_attr == AVRC_MAX_NUM_MEDIA_ATTR_ID)
+              num_attr--;
+      }
       fill_pdu_queue(IDX_GET_ELEMENT_ATTR_RSP, ctype, label, true, p_dev);
       HAL_CBACK(bt_rc_callbacks, get_element_attr_cb, num_attr, element_attrs,
                 &rc_addr);
@@ -1822,6 +1832,15 @@ static void btif_rc_upstreams_evt(uint16_t event, tAVRC_COMMAND* pavrc_cmd,
         send_reject_response(p_dev->rc_handle, label, pavrc_cmd->pdu,
                              AVRC_STS_BAD_PARAM, pavrc_cmd->cmd.opcode);
         return;
+      }
+      int ver = AVRC_REV_INVALID;
+      ver = sdp_get_stored_avrc_tg_version (rc_addr.address);
+      if ((!(p_dev->rc_features & BTA_AV_FEAT_CA)) ||
+              (ver < AVRC_REV_1_6) || (ver == AVRC_REV_INVALID))
+      {
+          BTIF_TRACE_DEBUG("remove cover art element if remote doesn't support avrcp1.6");
+          if (num_attr == AVRC_MAX_NUM_MEDIA_ATTR_ID)
+              num_attr--;
       }
       fill_pdu_queue(IDX_GET_ITEM_ATTR_RSP, ctype, label, true, p_dev);
       BTIF_TRACE_DEBUG("%s: GET_ITEM_ATTRIBUTES: num_attr: %d", __func__,
@@ -2181,32 +2200,6 @@ static bt_status_t get_element_attr_rsp(bt_bdaddr_t* bd_addr, uint8_t num_attr,
 
 /***************************************************************************
  *
- * Function         reject_pending_notification
- *
- * Description      Utility function to reject a pending notification. When
- *                  AddressedPlayer change is received, all pending
- *                  notifications should be completed.
- *
- * Returns          void
- *
- **************************************************************************/
-static void reject_pending_notification(btrc_event_id_t event_id, int idx) {
-  tAVRC_RESPONSE avrc_rsp;
-  memset(&(avrc_rsp.reg_notif), 0, sizeof(tAVRC_REG_NOTIF_RSP));
-
-  avrc_rsp.reg_notif.event_id = event_id;
-  avrc_rsp.reg_notif.pdu = AVRC_PDU_REGISTER_NOTIFICATION;
-  avrc_rsp.reg_notif.opcode = opcode_from_pdu(AVRC_PDU_REGISTER_NOTIFICATION);
-  avrc_rsp.reg_notif.status = AVRC_STS_ADDR_PLAYER_CHG;
-  BTIF_TRACE_WARNING("%s: Handling event ID: 0x%x", __func__, event_id);
-
-  send_metamsg_rsp(&btif_rc_cb.rc_multi_cb[idx], -1,
-                   btif_rc_cb.rc_multi_cb[idx].rc_notif[event_id - 1].label,
-                   AVRC_RSP_REJ, &avrc_rsp);
-}
-
-/***************************************************************************
- *
  * Function         register_notification_rsp_sho_mcast
  *
  * Description      Response to the register notification request if
@@ -2316,20 +2309,6 @@ static bt_status_t register_notification_rsp_sho_mcast(
                                               : AVRC_RSP_CHANGED),
     &avrc_rsp);
 
-  /* if notification type is address player changed, then complete all player
-   * specific
-   * notifications with AV/C C-Type REJECTED with error code Addressed Player
-   * Changed. */
-  if (event_id == BTRC_EVT_ADDR_PLAYER_CHANGE &&
-    type == BTRC_NOTIFICATION_TYPE_CHANGED) {
-    /* array includes notifications to be completed on addressed player change
-     */
-    btrc_event_id_t evt_id[] = {
-        BTRC_EVT_PLAY_STATUS_CHANGED, BTRC_EVT_TRACK_CHANGE,
-        BTRC_EVT_PLAY_POS_CHANGED, BTRC_EVT_NOW_PLAYING_CONTENT_CHANGED};
-    for (uint8_t id = 0; id < sizeof(evt_id) / sizeof((evt_id)[0]); id++)
-      reject_pending_notification(evt_id[id], idx);
-  }
   return BT_STATUS_SUCCESS;
 }
 
@@ -2438,21 +2417,6 @@ static bt_status_t register_notification_rsp(
                                                   : AVRC_RSP_CHANGED),
         &avrc_rsp);
 
-    /* if notification type is address player changed, then complete all player
-    * specific
-    * notifications with AV/C C-Type REJECTED with error code Addressed Player
-    * Changed. */
-    if (event_id == BTRC_EVT_ADDR_PLAYER_CHANGE &&
-        type == BTRC_NOTIFICATION_TYPE_CHANGED) {
-      /* array includes notifications to be completed on addressed player change
-       */
-      btrc_event_id_t evt_id[] = {
-          BTRC_EVT_PLAY_STATUS_CHANGED, BTRC_EVT_TRACK_CHANGE,
-          BTRC_EVT_PLAY_POS_CHANGED, BTRC_EVT_NOW_PLAYING_CONTENT_CHANGED};
-      for (uint8_t id = 0; id < sizeof(evt_id) / sizeof((evt_id)[0]); id++) {
-        reject_pending_notification(evt_id[id], idx);
-      }
-    }
   }
   return BT_STATUS_SUCCESS;
 }

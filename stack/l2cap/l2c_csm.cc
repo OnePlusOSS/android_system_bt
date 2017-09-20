@@ -221,7 +221,7 @@ static void l2c_csm_closed(tL2C_CCB* p_ccb, uint16_t event, void* p_data) {
 
       /* Wait for the info resp in this state before sending connect req (if
        * needed) */
-      if ((!p_ccb->p_lcb->w4_info_rsp)|| (BT_PSM_SDP == p_ccb->p_rcb->psm)) {
+      if (!p_ccb->p_lcb->w4_info_rsp) {
         /* Need to have at least one compatible channel to continue */
         if (!l2c_fcr_chk_chan_modes(p_ccb)) {
           l2cu_release_ccb(p_ccb);
