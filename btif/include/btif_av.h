@@ -399,5 +399,14 @@ tBTA_AV_LATENCY btif_av_get_sink_latency();
 ********************************************************************************/
 void btif_av_peer_config_dump();
 
+/******************************************************************************
+**
+** Function         btif_av_get_current_playing_dev_idx()
+**
+** Description
+**
+** Returns
+********************************************************************************/
+int btif_av_get_current_playing_dev_idx();
 
 #endif /* BTIF_AV_H */

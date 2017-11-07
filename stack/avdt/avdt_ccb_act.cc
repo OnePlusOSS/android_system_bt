@@ -138,6 +138,27 @@ void avdt_ccb_chk_close(tAVDT_CCB* p_ccb, UNUSED_ATTR tAVDT_CCB_EVT* p_data) {
 
 /*******************************************************************************
  *
+ * Function         avdt_ccb_get_num_allocated_seps
+ *
+ * Description      This function will return num of seps allocated
+ *
+ * Returns          int
+ *
+ ******************************************************************************/
+static int avdt_ccb_get_num_allocated_seps() {
+  tAVDT_SCB* p_scb = &avdt_cb.scb[0];
+  int num_seps = 0;
+  /* Num allocated SEPs vary between split and non-split mode
+   * based on codecs supported
+   */
+  for(int i = 0; i < AVDT_NUM_SEPS; i++, p_scb++) {
+    if (p_scb->allocated) num_seps++;
+  }
+  AVDT_TRACE_WARNING("%s:num seps allocated = %d",__func__,num_seps);
+  return num_seps;
+}
+/*******************************************************************************
+ *
  * Function         avdt_ccb_hdl_discover_cmd
  *
  * Description      This function is called when a discover command is
@@ -155,7 +176,8 @@ void avdt_ccb_hdl_discover_cmd(tAVDT_CCB* p_ccb, tAVDT_CCB_EVT* p_data) {
   int i;
   bt_bdaddr_t remote_bdaddr;
   int num_conn = avdt_scb_get_max_av_client();
-  int num_codecs = AVDT_NUM_SEPS / num_conn;
+  //int num_codecs = AVDT_NUM_SEPS / num_conn;
+  int num_codecs = ((avdt_ccb_get_num_allocated_seps()) / num_conn);
   int effective_num_seps = 0;
 
   bdcpy(remote_bdaddr.address, p_ccb->peer_addr);

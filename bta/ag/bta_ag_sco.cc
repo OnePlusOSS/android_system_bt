@@ -745,6 +745,8 @@ static void bta_ag_sco_event(tBTA_AG_SCB* p_scb, uint8_t event) {
           /* If last SCO instance then finish shutting down */
           if (!bta_ag_other_scb_open(p_scb)) {
             p_sco->state = BTA_AG_SCO_SHUTDOWN_ST;
+          } else {
+            p_sco->state = BTA_AG_SCO_LISTEN_ST;
           }
           break;
 
@@ -810,6 +812,8 @@ static void bta_ag_sco_event(tBTA_AG_SCB* p_scb, uint8_t event) {
           /* If last SCO instance then finish shutting down */
           if (!bta_ag_other_scb_open(p_scb)) {
             p_sco->state = BTA_AG_SCO_SHUTDOWN_ST;
+          } else {
+            p_sco->state = BTA_AG_SCO_LISTEN_ST;
           }
           break;
 

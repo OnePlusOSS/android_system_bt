@@ -163,7 +163,8 @@ void btm_update_scanner_filter_policy(tBTM_BLE_SFP scan_policy) {
  *
  ******************************************************************************/
 void btm_ble_bgconn_cancel_if_disconnected(BD_ADDR bd_addr) {
-  if (btm_cb.ble_ctr_cb.conn_state != BLE_BG_CONN) return;
+  if ((btm_cb.ble_ctr_cb.conn_state != BLE_BG_CONN) || (bd_addr == NULL))
+    return;
 
   bt_bdaddr_t addr = *(bt_bdaddr_t*)bd_addr;
 

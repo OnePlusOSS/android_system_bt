@@ -364,16 +364,25 @@ static void event_finish_startup(UNUSED_ATTR void* context) {
   LOG_INFO(LOG_TAG, "%s", __func__);
   std::lock_guard<std::recursive_mutex> lock(commands_pending_response_mutex);
   alarm_cancel(startup_timer);
-  future_ready(startup_future, FUTURE_SUCCESS);
-  startup_future = NULL;
+  // added null check if startup_future has become null
+  // due to timer expiry
+  // eventually it will lead to command timeout incase timer expires
+  // before this call. IPC Logs will be collected as part of command
+  // timeout handling.
+  if(startup_future != NULL) {
+    future_ready(startup_future, FUTURE_SUCCESS);
+    startup_future = NULL;
+  }
 }
 
 static void startup_timer_expired(UNUSED_ATTR void* context) {
   LOG_ERROR(LOG_TAG, "%s", __func__);
 
   std::lock_guard<std::recursive_mutex> lock(commands_pending_response_mutex);
-  future_ready(startup_future, FUTURE_FAIL);
-  startup_future = NULL;
+  if(startup_future != NULL) {
+    future_ready(startup_future, FUTURE_FAIL);
+    startup_future = NULL;
+  }
 }
 
 // Command/packet transmitting functions

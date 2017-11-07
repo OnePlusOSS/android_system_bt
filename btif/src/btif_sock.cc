@@ -135,8 +135,11 @@ static bt_status_t btsock_listen(btsock_type_t type, const char* service_name,
     CHECK(sock_fd != NULL);
   }
 
-  *sock_fd = INVALID_FD;
   bt_status_t status = BT_STATUS_FAIL;
+  if (sock_fd == NULL)
+    return status;
+
+  *sock_fd = INVALID_FD;
 
   switch (type) {
     case BTSOCK_RFCOMM:
@@ -169,8 +172,11 @@ static bt_status_t btsock_connect(const bt_bdaddr_t* bd_addr,
   CHECK(bd_addr != NULL);
   CHECK(sock_fd != NULL);
 
-  *sock_fd = INVALID_FD;
   bt_status_t status = BT_STATUS_FAIL;
+  if (sock_fd == NULL)
+    return status;
+
+  *sock_fd = INVALID_FD;
 
   switch (type) {
     case BTSOCK_RFCOMM:

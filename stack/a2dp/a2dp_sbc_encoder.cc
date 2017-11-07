@@ -220,6 +220,7 @@ static void a2dp_sbc_encoder_update(uint16_t peer_mtu,
     return;
   }
   enc_update_in_progress = TRUE;
+  LOG_DEBUG(LOG_TAG, "%s: Set flag enc_update_in_progress = %d", __func__, enc_update_in_progress);
   tx_enc_update_initiated = TRUE;
   const uint8_t* p_codec_info = codec_info;
   min_bitpool = A2DP_GetMinBitpoolSbc(p_codec_info);
@@ -383,6 +384,9 @@ static void a2dp_sbc_encoder_update(uint16_t peer_mtu,
   /* Reset entirely the SBC encoder */
   SBC_Encoder_Init(&a2dp_sbc_encoder_cb.sbc_encoder_params);
   a2dp_sbc_encoder_cb.tx_sbc_frames = calculate_max_frames_per_packet();
+  enc_update_in_progress = FALSE;
+  LOG_DEBUG(LOG_TAG, "%s:sbc encoder update done, enc_update_in_progress = %d",
+                      __func__, enc_update_in_progress);
 }
 
 void a2dp_sbc_encoder_cleanup(void) {

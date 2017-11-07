@@ -288,10 +288,19 @@ static void btif_a2dp_recv_ctrl_data(void) {
       break;
     }
 
-    case A2DP_CTRL_CMD_OFFLOAD_START:
-      btif_dispatch_sm_event(BTIF_AV_OFFLOAD_START_REQ_EVT, NULL, 0);
+    case A2DP_CTRL_CMD_OFFLOAD_START: {
+      uint8_t hdl = 0;
+      int idx = btif_get_is_remote_started_idx();
+      if (idx < btif_max_av_clients) {
+        hdl = btif_av_get_av_hdl_from_idx(idx);
+        APPL_TRACE_DEBUG("%s: hdl = %d",__func__, hdl);
+      } else {
+        APPL_TRACE_ERROR("%s: Invalid index",__func__);
+        break;
+      }
+      btif_dispatch_sm_event(BTIF_AV_OFFLOAD_START_REQ_EVT, (char *)&hdl, 1);
       break;
-
+    }
     case A2DP_CTRL_GET_SINK_LATENCY: {
       tA2DP_LATENCY sink_latency;
 

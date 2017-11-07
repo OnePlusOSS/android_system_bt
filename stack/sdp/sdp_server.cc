@@ -66,6 +66,7 @@ extern fixed_queue_t* btu_general_alarm_queue;
 #define SDP_PROFILE_DESC_LENGTH 8
 #define AVRCP_SUPPORTED_FEATURES_POSITION 1
 #define AVRCP_BROWSE_SUPPORT_BITMASK 0x40
+#define AVRCP_MULTI_PLAYER_SUPPORT_BITMASK 0x80
 #define AVRCP_CA_SUPPORT_BITMASK 0x01
 
 /******************************************************************************/
@@ -311,6 +312,8 @@ bool sdp_reset_avrcp_browsing_bit (tSDP_ATTRIBUTE attr, tSDP_ATTRIBUTE *p_attr,
         {
             SDP_TRACE_ERROR("Reset Browse feature bitmask");
             p_attr->value_ptr[AVRCP_SUPPORTED_FEATURES_POSITION] &= ~AVRCP_BROWSE_SUPPORT_BITMASK;
+            p_attr->value_ptr[AVRCP_SUPPORTED_FEATURES_POSITION] &=
+                    ~AVRCP_MULTI_PLAYER_SUPPORT_BITMASK;
             return TRUE;
         }
         ver = sdp_get_stored_avrc_tg_version (remote_address);
@@ -319,6 +322,8 @@ bool sdp_reset_avrcp_browsing_bit (tSDP_ATTRIBUTE attr, tSDP_ATTRIBUTE *p_attr,
         {
             SDP_TRACE_ERROR("Reset Browse feature bitmask");
             p_attr->value_ptr[AVRCP_SUPPORTED_FEATURES_POSITION] &= ~AVRCP_BROWSE_SUPPORT_BITMASK;
+            p_attr->value_ptr[AVRCP_SUPPORTED_FEATURES_POSITION] &=
+                    ~AVRCP_MULTI_PLAYER_SUPPORT_BITMASK;
             return TRUE;
         }
     }

@@ -1545,8 +1545,15 @@ static void btif_dm_search_services_evt(uint16_t event, char* p_param) {
 
       BTIF_TRACE_DEBUG("%s:(result=0x%x, services 0x%x)", __func__,
                        p_data->disc_res.result, p_data->disc_res.services);
+      /* retry sdp service search, if sdp fails for pairing bd address,
+      ** report sdp results to APP immediately for non pairing addresses
+      */
       if ((p_data->disc_res.result != BTA_SUCCESS) &&
           (pairing_cb.state == BT_BOND_STATE_BONDING) &&
+          ((bdcmp(p_data->disc_res.bd_addr, pairing_cb.bd_addr) == 0) ||
+           (bdcmp(p_data->disc_res.bd_addr, pairing_cb.static_bdaddr.address) ==
+            0)) &&
+          (pairing_cb.sdp_attempts > 0) &&
           (pairing_cb.sdp_attempts < BTIF_DM_MAX_SDP_ATTEMPTS_AFTER_PAIRING)) {
         BTIF_TRACE_WARNING("%s:SDP failed after bonding re-attempting",
                            __func__);
@@ -2584,6 +2591,9 @@ bt_status_t btif_dm_cancel_bond(const bt_bdaddr_t* bd_addr) {
 void btif_dm_hh_open_failed(bt_bdaddr_t* bdaddr) {
   if (pairing_cb.state == BT_BOND_STATE_BONDING &&
       bdcmp(bdaddr->address, pairing_cb.bd_addr) == 0) {
+    BTIF_TRACE_WARNING("%s: remove device security record ", __func__);
+    btif_storage_remove_bonded_device((bt_bdaddr_t*)bdaddr);
+    BTA_DmRemoveDevice((uint8_t*)bdaddr->address);
     bond_state_changed(BT_STATUS_FAIL, bdaddr, BT_BOND_STATE_NONE);
   }
 }

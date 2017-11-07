@@ -54,8 +54,7 @@ static const tA2DP_APTX_HD_CIE a2dp_aptx_hd_src_caps = {
 //static const tA2DP_APTX_HD_CIE a2dp_aptx_hd_caps = {
     A2DP_APTX_HD_VENDOR_ID,          /* vendorId */
     A2DP_APTX_HD_CODEC_ID_BLUETOOTH, /* codecId */
-    (A2DP_APTX_HD_SAMPLERATE_44100 |
-     A2DP_APTX_HD_SAMPLERATE_48000),   /* sampleRate */
+    A2DP_APTX_HD_SAMPLERATE_44100,   /* sampleRate */
     A2DP_APTX_HD_CHANNELS_STEREO,      /* channelMode */
     A2DP_APTX_HD_ACL_SPRINT_RESERVED0, /* acl_sprint_reserved0 */
     A2DP_APTX_HD_ACL_SPRINT_RESERVED1, /* acl_sprint_reserved1 */
@@ -68,7 +67,7 @@ static const tA2DP_APTX_HD_CIE a2dp_aptx_hd_offload_caps = {
 //static const tA2DP_APTX_HD_CIE a2dp_aptx_hd_caps = {
     A2DP_APTX_HD_VENDOR_ID,          /* vendorId */
     A2DP_APTX_HD_CODEC_ID_BLUETOOTH, /* codecId */
-     A2DP_APTX_HD_SAMPLERATE_48000,   /* sampleRate */
+    A2DP_APTX_HD_SAMPLERATE_48000,   /* sampleRate */
     A2DP_APTX_HD_CHANNELS_STEREO,      /* channelMode */
     A2DP_APTX_HD_ACL_SPRINT_RESERVED0, /* acl_sprint_reserved0 */
     A2DP_APTX_HD_ACL_SPRINT_RESERVED1, /* acl_sprint_reserved1 */

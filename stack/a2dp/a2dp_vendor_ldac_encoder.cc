@@ -392,6 +392,10 @@ static void a2dp_vendor_ldac_encoder_update(uint16_t peer_mtu,
     a2dp_ldac_encoder_cb.TxAaMtuSize = peer_mtu;
   }
 
+#if (BTA_AV_CO_CP_SCMS_T == TRUE)
+  a2dp_ldac_encoder_cb.TxAaMtuSize--;
+#endif
+
   // Set the quality mode index
   int old_quality_mode_index = p_encoder_params->quality_mode_index;
   if (codec_config.codec_specific_1 != 0) {

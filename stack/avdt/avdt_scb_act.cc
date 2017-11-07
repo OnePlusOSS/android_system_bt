@@ -816,11 +816,16 @@ void avdt_scb_hdl_delay_rpt_cmd(tAVDT_SCB* p_scb, tAVDT_SCB_EVT* p_data) {
       AVDT_DELAY_REPORT_EVT, (tAVDT_CTRL*)&p_data->msg.hdr);
 
   if (p_scb->p_ccb) {
-    avdt_msg_send_rsp(p_scb->p_ccb, AVDT_SIG_DELAY_RPT, &p_data->msg);
-    if (p_scb->role == AVDT_CONF_INT) {
-      /* initiate open after get initial delay report value*/
-      single.seid = p_scb->peer_seid;
-      avdt_scb_event(p_scb, AVDT_SCB_API_OPEN_REQ_EVT, (tAVDT_SCB_EVT*)&single);
+    if ((p_scb->cs.cfg.psc_mask & AVDT_PSC_DELAY_RPT)) {
+      avdt_msg_send_rsp(p_scb->p_ccb, AVDT_SIG_DELAY_RPT, &p_data->msg);
+      if (p_scb->role == AVDT_CONF_INT) {
+        /* initiate open after get initial delay report value*/
+        single.seid = p_scb->peer_seid;
+        avdt_scb_event(p_scb, AVDT_SCB_API_OPEN_REQ_EVT, (tAVDT_SCB_EVT*)&single);
+      }
+    } else {
+      p_data->msg.hdr.err_code = AVDT_ERR_NSC;
+      avdt_msg_send_rej(p_scb->p_ccb, AVDT_SIG_DELAY_RPT, &p_data->msg);
     }
   }
   else

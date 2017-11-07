@@ -304,6 +304,7 @@ static void btif_a2dp_source_startup_delayed(UNUSED_ATTR void* context) {
   raise_priority_a2dp(TASK_HIGH_MEDIA);
   btif_a2dp_control_init();
   btif_a2dp_source_state = BTIF_A2DP_SOURCE_STATE_RUNNING;
+  APPL_TRACE_EVENT("%s: enc_update_in_progress = %d", __func__, enc_update_in_progress);
   enc_update_in_progress = FALSE;
   BluetoothMetricsLogger::GetInstance()->LogBluetoothSessionStart(
       system_bt_osi::CONNECTION_TECHNOLOGY_TYPE_BREDR, 0);
@@ -347,6 +348,7 @@ static void btif_a2dp_source_shutdown_delayed(UNUSED_ATTR void* context) {
   btif_a2dp_source_cb.tx_audio_queue = NULL;
 
   btif_a2dp_source_state = BTIF_A2DP_SOURCE_STATE_OFF;
+  APPL_TRACE_EVENT("%s: enc_update_in_progress = %d", __func__, enc_update_in_progress);
   enc_update_in_progress = FALSE;
   BluetoothMetricsLogger::GetInstance()->LogBluetoothSessionEnd(
       system_bt_osi::DISCONNECT_REASON_UNKNOWN, 0);

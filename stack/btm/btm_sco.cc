@@ -607,7 +607,7 @@ tBTM_STATUS BTM_CreateSco(BD_ADDR remote_bda, bool is_orig, uint16_t pkt_types,
         if (is_orig) {
 /* can not create SCO link if in park mode */
 #if (BTM_SCO_WAKE_PARKED_LINK == TRUE)
-          if ((btm_read_power_mode_state(p->esco.data.bd_addr, &state) ==
+          if ((btm_read_power_mode_state(remote_bda, &state) ==
                BTM_SUCCESS)) {
             if (state == BTM_PM_ST_SNIFF || state == BTM_PM_ST_PARK ||
                 state == BTM_PM_ST_PENDING) {
@@ -1694,10 +1694,12 @@ bool btm_is_sco_active_by_bdaddr(BD_ADDR remote_bda) {
   for (xx = 0; xx < BTM_MAX_SCO_LINKS; xx++, p++) {
     if ((!memcmp(p->esco.data.bd_addr, remote_bda, BD_ADDR_LEN)) &&
         (p->state == SCO_ST_CONNECTED)) {
+        APPL_TRACE_DEBUG("%s: Sco is active", __func__);
       return (true);
     }
   }
 #endif
+  APPL_TRACE_DEBUG("%s: Sco is not active", __func__);
   return (false);
 }
 

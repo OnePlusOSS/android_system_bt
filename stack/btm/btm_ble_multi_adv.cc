@@ -821,6 +821,12 @@ class BleAdvertisingManagerImpl
     AdvertisingInstance* p_inst = &adv_inst[inst_id];
 
     VLOG(1) << __func__ << " inst_id: " << +inst_id;
+
+    if (!BleAdvertisingManager::IsInitialized()) {
+      LOG(ERROR) << "Stack already shutdown";
+      return;
+    }
+
     if (inst_id >= inst_count) {
       LOG(ERROR) << "bad instance id " << +inst_id;
       return;

@@ -233,6 +233,10 @@ static void a2dp_aac_encoder_update(uint16_t peer_mtu,
     a2dp_aac_encoder_cb.TxAaMtuSize = peer_mtu;
   }
 
+#if (BTA_AV_CO_CP_SCMS_T == TRUE)
+  a2dp_aac_encoder_cb.TxAaMtuSize--;
+#endif
+
   LOG_DEBUG(LOG_TAG, "%s: MTU=%d, peer_mtu=%d", __func__,
             a2dp_aac_encoder_cb.TxAaMtuSize, peer_mtu);
   LOG_DEBUG(LOG_TAG, "%s: sample_rate: %d channel_mode: %d ", __func__,

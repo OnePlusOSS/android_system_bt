@@ -2729,6 +2729,13 @@ static bt_status_t register_notification_rsp_sho_mcast(
       break;
     case BTRC_EVT_NOW_PLAYING_CONTENT_CHANGED:
       break;
+    case BTRC_EVT_APP_SETTINGS_CHANGED:
+      avrc_rsp.reg_notif.param.player_setting.num_attr = p_param->player_setting.num_attr;
+      memcpy(&avrc_rsp.reg_notif.param.player_setting.attr_id,
+                                 p_param->player_setting.attr_ids, 2);
+      memcpy(&avrc_rsp.reg_notif.param.player_setting.attr_value,
+                                 p_param->player_setting.attr_values, 2);
+      break;
 
     default:
       BTIF_TRACE_WARNING("%s: Unhandled event ID: 0x%x", __func__, event_id);

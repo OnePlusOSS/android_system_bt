@@ -527,7 +527,6 @@ void bta_ag_rfc_acp_open(tBTA_AG_SCB* p_scb, tBTA_AG_DATA* p_data) {
   tBTA_AG_SCB *ag_scb, *other_scb;
   BD_ADDR dev_addr;
   int status;
-  tBTA_AG_RFC *p_buf;
 
   /* set role */
   p_scb->role = BTA_AG_ACP;
@@ -565,12 +564,8 @@ void bta_ag_rfc_acp_open(tBTA_AG_SCB* p_scb, tBTA_AG_DATA* p_data) {
             RFCOMM_RemoveConnection(ag_scb->conn_handle);
           }
           // send ourselves close event for clean up
-          // move back to OPENING state from INIT state so that clean up is done
-          ag_scb->state = 1;
-          p_buf = (tBTA_AG_RFC *) osi_malloc(sizeof(tBTA_AG_RFC));
-          p_buf->hdr.event = BTA_AG_RFC_CLOSE_EVT;
-          p_buf->hdr.layer_specific = bta_ag_scb_to_idx(ag_scb);
-          bta_sys_sendmsg(p_buf);
+          bta_ag_cback_open(ag_scb, NULL, BTA_AG_FAIL_RFCOMM);
+          bdcpy(ag_scb->peer_addr, bd_addr_null);
         }
       } else {
         /* Resume outgoing connection. */

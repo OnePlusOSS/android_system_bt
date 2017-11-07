@@ -81,7 +81,7 @@ bool btif_a2dp_on_started(tBTA_AV_START* p_av_start, bool pending_start,
       if (p_av_start->initiator) {
         if (pending_start) {
           if (btif_av_is_split_a2dp_enabled()) {
-            btif_dispatch_sm_event(BTIF_AV_OFFLOAD_START_REQ_EVT, NULL, 0);
+            btif_dispatch_sm_event(BTIF_AV_OFFLOAD_START_REQ_EVT, (char *)&hdl, 1);
           } else {
             if (pending_cmd == A2DP_CTRL_CMD_START)
               btif_a2dp_command_ack(A2DP_CTRL_ACK_SUCCESS);

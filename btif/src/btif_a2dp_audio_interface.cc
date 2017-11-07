@@ -66,6 +66,9 @@ Status mapToStatus(uint8_t resp);
 uint8_t btif_a2dp_audio_process_request(uint8_t cmd);
 volatile bool server_died = false;
 static pthread_t audio_hal_monitor;
+typedef std::unique_lock<std::mutex> Lock;
+std::mutex mtx;
+std::condition_variable mCV;
 /*BTIF AV helper */
 extern bool btif_av_is_device_disconnecting();
 extern int btif_get_is_remote_started_idx();
@@ -121,8 +124,9 @@ struct HidlDeathRecipient : public hidl_death_recipient {
       uint64_t /*cookie*/,
       const wp<::android::hidl::base::V1_0::IBase>& /*who*/) {
     LOG_INFO(LOG_TAG,"serviceDied");
-    //on_hidl_server_died();
+    Lock lk(mtx);
     server_died = true;
+    mCV.notify_one();
   }
 };
 sp<HidlDeathRecipient> BTAudioHidlDeathRecipient = new HidlDeathRecipient();
@@ -204,7 +208,11 @@ Status mapToStatus(uint8_t resp)
 /* Thread to handle hal sever death receipt*/
 static void* server_thread(UNUSED_ATTR void* arg) {
   LOG_INFO(LOG_TAG,"%s",__func__);
-  while (server_died == false);
+  Lock lk(mtx);
+  if (server_died == false) {
+    LOG_INFO(LOG_TAG,"waitin on condition");
+    mCV.wait(lk);
+  }
   if (btAudio != nullptr) {
     LOG_INFO(LOG_TAG,"%s:audio hal died",__func__);
     server_died = false;
@@ -247,7 +255,9 @@ void btif_a2dp_audio_interface_deinit() {
   }
   deinit_pending = false;
   btAudio = nullptr;
+  Lock lk(mtx);
   server_died = true; //Exit thread
+  mCV.notify_one();
   LOG_INFO(LOG_TAG,"btif_a2dp_audio_interface_deinit:Exit");
 }
 
@@ -385,7 +395,7 @@ void on_hidl_server_died() {
   if (btAudio != nullptr) {
     btAudio->unlinkToDeath(BTAudioHidlDeathRecipient);
     btAudio = nullptr;
-    usleep(2000000); //sleep for 2sec for hal server to restart
+    usleep(1500000); //sleep for 1.5sec for hal server to restart
     btif_dispatch_sm_event(BTIF_AV_REINIT_AUDIO_IF,NULL,0);
   }
 }
@@ -478,7 +488,8 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
           APPL_TRACE_DEBUG("%s: remote started idx = %d",__func__, idx);
           if (idx < btif_max_av_clients) {
             hdl = btif_av_get_av_hdl_from_idx(idx);
-            APPL_TRACE_DEBUG("%s: hdl = %d",__func__, hdl);
+            APPL_TRACE_DEBUG("%s: hdl = %d, enc_update_in_progress = %d",__func__, hdl,
+                              enc_update_in_progress);
             if (hdl >= 0) {
               btif_a2dp_source_setup_codec(hdl);
               enc_update_in_progress = TRUE;
@@ -575,10 +586,21 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
       status = A2DP_CTRL_ACK_SUCCESS;
       break;
 
-    case A2DP_CTRL_CMD_OFFLOAD_START:
-      btif_dispatch_sm_event(BTIF_AV_OFFLOAD_START_REQ_EVT, NULL, 0);
+    case A2DP_CTRL_CMD_OFFLOAD_START: {
+       uint8_t hdl = 0;
+       int idx = btif_av_get_latest_playing_device_idx();
+       if (idx < btif_max_av_clients) {
+         hdl = btif_av_get_av_hdl_from_idx(idx);
+         APPL_TRACE_DEBUG("%s: hdl = %d",__func__, hdl);
+       } else {
+         APPL_TRACE_ERROR("%s: Invalid index",__func__);
+         status = -1;
+         break;
+       }
+      btif_dispatch_sm_event(BTIF_AV_OFFLOAD_START_REQ_EVT, (char *)&hdl, 1);
       status = A2DP_CTRL_ACK_PENDING;
       break;
+    }
     case A2DP_CTRL_GET_CODEC_CONFIG:
       {
         uint8_t p_codec_info[AVDT_CODEC_SIZE];
@@ -589,6 +611,7 @@ uint8_t btif_a2dp_audio_process_request(uint8_t cmd)
         LOG_INFO(LOG_TAG,"A2DP_CTRL_GET_CODEC_CONFIG");
         A2dpCodecConfig *CodecConfig = bta_av_get_a2dp_current_codec();
         bta_av_co_get_peer_params(&peer_param);
+        LOG_INFO(LOG_TAG,"enc_update_in_progress = %d", enc_update_in_progress);
         if ((btif_av_stream_started_ready() == FALSE) ||
             (enc_update_in_progress == TRUE))
         {
